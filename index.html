@@ -1,12 +1,19 @@
 <!DOCTYPE html>
 <!--
   Estrellas de Barrio 2026 — versión auto-hospedada (independiente de claude.ai).
-  Para activar el guardado compartido en línea, edita el bloque FIREBASE_CONFIG
-  dentro de este mismo archivo (busca "REEMPLAZA_CON_TU_API_KEY") con los datos
-  de tu propio proyecto gratuito de Firebase. Instrucciones completas en el
-  comentario que está justo encima de FIREBASE_CONFIG, más abajo en este archivo.
-  Mientras no se configure, la plataforma funciona igual pero solo guarda los
-  cambios en el navegador de cada persona (sin compartir entre distintos equipos).
+  GUARDADO COMPARTIDO: CONFIGURADO. Este archivo apunta al proyecto de Firebase
+  "liga-estrellas-de-barrio", documento estrellas2026/estado. Para que funcione,
+  Firestore debe estar habilitado en ese proyecto y sus Reglas deben permitir
+  lectura y escritura en ese documento (el texto exacto está en el comentario
+  que está justo encima de FIREBASE_CONFIG, más abajo en este archivo).
+  Si Firestore no responde, la plataforma sigue funcionando pero guarda los
+  cambios solo en el navegador de cada persona (sin compartir entre dispositivos).
+
+  ACCESO: la plataforma exige usuario y clave. Usuarios iniciales: admin (perfil
+  Administrador), mesa (Mesa de control) y general (solo consulta). Las claves se
+  guardan como hash SHA-256 con salt dentro del mismo estado compartido y se
+  administran desde la pestaña "Usuarios y Accesos". Es un control operativo, no
+  seguridad criptográfica: ver el detalle en el comentario de ui_usuarios.js.
 -->
 <html lang="es">
 <head>
@@ -160,6 +167,32 @@
   .modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
   .hidden{ display:none !important; }
 
+  /* --- Pantalla de ingreso --- */
+  #loginOverlay{ position:fixed; inset:0; z-index:9000; background:var(--bg); display:flex;
+    align-items:center; justify-content:center; padding:20px; overflow:auto; }
+  #loginOverlay.hidden{ display:none !important; }
+  .login-card{ width:100%; max-width:380px; background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; padding:22px; box-shadow:0 18px 45px rgba(15,23,42,.14); }
+  .login-brand{ display:flex; gap:12px; align-items:center; margin-bottom:14px; }
+  .login-logo{ width:40px; height:40px; border-radius:11px; background:var(--green); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; flex:0 0 auto; }
+  .login-brand h1{ margin:0; font-size:15.5px; }
+  .login-brand p{ margin:1px 0 0; font-size:11.5px; color:var(--muted); }
+  .login-desc{ font-size:12.5px; color:var(--muted); margin:0 0 14px; }
+  .login-msg{ display:none; margin:10px 0 0; padding:8px 10px; border-radius:8px; font-size:12.5px;
+    background:var(--red-soft); color:var(--red); }
+  .login-foot{ font-size:11.5px; color:var(--muted); margin:14px 0 0; }
+  body.bloqueado #app{ filter:blur(3px); pointer-events:none; user-select:none; }
+
+  /* --- Bloqueos por perfil --- */
+  body.rol-general #content input, body.rol-general #content select, body.rol-general #content textarea,
+  body.rol-general #content button:not(#btnImprimirCircular){ pointer-events:none; opacity:.5; }
+  body.rol-mesa #panel-equipos input, body.rol-mesa #panel-equipos select,
+  body.rol-mesa #panel-equipos textarea, body.rol-mesa #panel-equipos button,
+  body.rol-mesa #panel-circular input, body.rol-mesa #panel-circular select,
+  body.rol-mesa #panel-circular textarea,
+  body.rol-mesa #panel-circular button:not(#btnImprimirCircular){ pointer-events:none; opacity:.5; }
+
   /* ---------- Toast ---------- */
   #toastWrap{ position:fixed; bottom:20px; right:20px; z-index:200; display:flex; flex-direction:column; gap:8px; }
   .toast{ background:#182234; color:#fff; padding:10px 16px; border-radius:10px; font-size:12.8px; box-shadow:0 8px 20px rgba(0,0,0,.3);
@@ -206,6 +239,7 @@
       <button class="tab-btn" data-tab="acta"><span class="ic">📝</span> Acta de Partido</button>
       <button class="tab-btn" data-tab="circular"><span class="ic">📰</span> Circular</button>
       <button class="tab-btn" data-tab="historial"><span class="ic">🕒</span> Historial de Actividad</button>
+      <button class="tab-btn" data-tab="usuarios"><span class="ic">🔐</span> Usuarios y Accesos</button>
     </nav>
     <div class="side-foot">Estrellas de Barrio 2026 · Peñalolén</div>
   </aside>
@@ -218,11 +252,13 @@
         <p class="sub" id="topSub">Los 12 equipos del campeonato — base de toda la plataforma.</p>
       </div>
       <div class="topbar-actions">
-        <span class="pill pill-muted" id="autorChip" title="Cambiar mi nombre" style="cursor:pointer;">👤 Identificarme</span>
+        <span class="pill pill-muted" id="userChip">👤 Sin sesión</span>
+        <span class="pill pill-muted" id="rolChip"></span>
         <span class="pill save-status pill-muted" id="saveStatus">● Cargando…</span>
         <button class="btn btn-ghost btn-xs needs-write" id="btnImport">📂 Importar datos</button>
         <input type="file" id="fileImport" accept="application/json" class="hidden">
         <button class="btn btn-primary btn-xs" id="btnExport">📄 Ver / copiar mis datos</button>
+        <button class="btn btn-ghost btn-xs" id="btnSalir">🚪 Salir</button>
       </div>
     </div>
     <div id="content">
@@ -236,7 +272,22 @@
       <section class="tab-panel" id="panel-acta"></section>
       <section class="tab-panel" id="panel-circular"></section>
       <section class="tab-panel" id="panel-historial"></section>
+      <section class="tab-panel" id="panel-usuarios"></section>
     </div>
+  </div>
+</div>
+
+<div id="loginOverlay">
+  <div class="login-card">
+    <div class="login-brand"><span class="login-logo">EB</span>
+      <div><h1>Estrellas de Barrio 2026</h1><p>Plataforma de gestión del campeonato</p></div>
+    </div>
+    <p class="login-desc">Ingrese con su usuario y clave. Cada ingreso queda registrado en el Historial de Actividad.</p>
+    <div class="field"><label>Usuario</label><input class="txt-input" id="loginUsuario" autocomplete="username" placeholder="Ej: admin"></div>
+    <div class="field"><label>Clave</label><input class="txt-input" id="loginClave" type="password" autocomplete="current-password" placeholder="Su clave"></div>
+    <div id="loginMsg" class="login-msg"></div>
+    <button class="btn btn-primary" id="btnIngresar" style="width:100%;margin-top:6px;">Ingresar</button>
+    <p class="login-foot">Si olvidó su clave, pídale al administrador que le asigne una nueva: las claves se guardan cifradas y no se pueden recuperar.</p>
   </div>
 </div>
 
@@ -540,6 +591,7 @@ function buildInitialState(){
     actas: {},       // matchId -> { acciones:[{id,lado,playerId,tipo,minuto,causal,detalle,multa,enviadaSanciones}], resultadoAplicado:bool, rojasEnviadas:[] }
     sanciones: [],
     causales: CAUSALES,
+    usuarios: crearUsuariosIniciales(),
     historial: []   // [{id, ts, autor, accion, detalle}] — quién hizo qué y cuándo
   };
 }
@@ -743,7 +795,8 @@ var TAB_TITLES = {
   goleadores: ['Tabla de Goleadores', 'Rankings globales del campeonato.'],
   acta: ['Acta de Partido', 'Registro oficial de goles, autogoles, faltas y tarjetas.'],
   circular: ['Circular', 'Resumen de una jornada, listo para imprimir.'],
-  historial: ['Historial de Actividad', 'Quién hizo cada acción y cuándo.']
+  historial: ['Historial de Actividad', 'Quién hizo cada acción y cuándo.'],
+  usuarios: ['Usuarios y Accesos', 'Usuarios, claves y permisos de la plataforma.']
 };
 
 function switchTab(tab){
@@ -912,12 +965,12 @@ function formModal(opts){
       Hosting, GitHub Pages, Netlify, etc.) — no necesita servidor propio.
    ============================================================================ */
 var FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyD036mKX2mAWPuWzMuHWb8dwtGxt0JJ0Q",
+  apiKey:            "AIzaSyDX036mKX2mAWPuWzMuHWb8dwtGxt0JJ0Q",
   authDomain:        "liga-estrellas-de-barrio.firebaseapp.com",
   projectId:         "liga-estrellas-de-barrio",
   storageBucket:     "liga-estrellas-de-barrio.firebasestorage.app",
   messagingSenderId: "30854673775",
-  appId:             "1:30854673775:web:d4e2f28b6c7f4062d8a49a"
+  appId:             "1:30854673775:web:f9078c3419ae4eced8a49a"
 };
 var FIREBASE_COLECCION = 'estrellas2026';
 var FIREBASE_DOCUMENTO = 'estado';
@@ -970,6 +1023,7 @@ function normalizarEstadoCargado(data){
   data.actas = data.actas || {};
   data.sanciones = data.sanciones || [];
   data.causales = data.causales && data.causales.length ? data.causales : CAUSALES;
+  data.usuarios = data.usuarios && data.usuarios.length ? data.usuarios : crearUsuariosIniciales();
   data.historial = data.historial || [];
   return data;
 }
@@ -1088,61 +1142,11 @@ async function performSave(){
 
 /* ---- ui_autor.js ---- */
 /* ============================================================================
-   IDENTIFICACION DE AUTOR (para el Historial de Actividad)
-   No hay sistema de cuentas/login: cada persona escribe su nombre una sola
-   vez en su propio navegador (localStorage) y a partir de ahí sus acciones
-   quedan marcadas con ese nombre en STATE.historial (dato compartido/guardado).
-   Este archivo es compartido por cualquier variante de guardado en línea
-   (Artifact de Claude o Firebase) — no depende de cuál se use.
+   IDENTIFICACION DEL AUTOR (para el Historial de Actividad)
+   Reemplazado por el sistema de usuarios con clave: el autor de cada acción es
+   el usuario de la sesión activa (ver ui_usuarios.js, donde vive getAutor()).
+   Ya no se pide un nombre libre por navegador.
    ============================================================================ */
-var AUTOR_KEY = 'ebdb2026_autor_nombre';
-var CURRENT_AUTHOR = '';
-
-function loadAutorLocal(){
-  try { return localStorage.getItem(AUTOR_KEY) || ''; } catch (e) { return ''; }
-}
-function saveAutorLocal(nombre){
-  try { localStorage.setItem(AUTOR_KEY, nombre); } catch (e) { /* almacenamiento no disponible: seguir igual */ }
-}
-function getAutor(){
-  return CURRENT_AUTHOR || 'Sin identificar';
-}
-
-function renderAutorChip(){
-  var el = document.getElementById('autorChip');
-  if (!el) return;
-  el.textContent = '👤 ' + (CURRENT_AUTHOR || 'Identificarme');
-}
-
-function pedirNombreAutor(primeraVez){
-  formModal({
-    title: primeraVez ? '¿Cómo te llamas?' : 'Cambiar mi nombre',
-    okText: 'Guardar',
-    bodyHtml:
-      '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Así quedarán identificadas tus acciones en el ' +
-      'Historial de Actividad. Se guarda solo en este navegador — no es una cuenta ni una contraseña.</p>' +
-      '<div class="field"><label>Nombre</label><input class="txt-input" name="nombreAutor" style="width:100%;" ' +
-      'value="' + escapeHtml(CURRENT_AUTHOR) + '" placeholder="Ej: Juan Pérez"></div>',
-    onOk: function(form){
-      var nombre = form.nombreAutor.value.trim();
-      if (!nombre){ toast('Ingresa un nombre.', true); return false; }
-      CURRENT_AUTHOR = nombre;
-      saveAutorLocal(nombre);
-      renderAutorChip();
-      toast('Listo, ' + nombre + '.');
-    }
-  });
-}
-
-function initAutorUI(){
-  CURRENT_AUTHOR = loadAutorLocal();
-  renderAutorChip();
-  var chip = document.getElementById('autorChip');
-  if (chip) chip.addEventListener('click', function(){ pedirNombreAutor(false); });
-  if (!CURRENT_AUTHOR){
-    setTimeout(function(){ pedirNombreAutor(true); }, 500);
-  }
-}
 
 /* ---------------------------------------------------------------------------
    Historial de actividad: qué se hizo, cuándo y quién.
@@ -1308,6 +1312,10 @@ function renderProgramacion(){
   function fila(p){
     var t = matchRowTeams(p);
     var esPenales = p.etapa !== 'Fase de Grupos';
+    /* Mesa de control: solo puede tocar los resultados de una jornada abierta.
+       Cerrada la jornada, la corrección queda reservada al administrador. */
+    var editable = puedeEditarResultado(p);
+    var bloqueo = editable ? '' : ' disabled title="Jornada cerrada: solo el administrador puede corregir este resultado."';
     return '<tr data-match="' + p.id + '">' +
       '<td>' + p.numero + '</td>' +
       '<td>' + escapeHtml(p.jornada) + '</td>' +
@@ -1315,16 +1323,18 @@ function renderProgramacion(){
       '<td>' + fmtDateEs(p.dia) + '</td>' +
       '<td>' + p.hora + '</td>' +
       '<td>' + escapeHtml(t.localNombre) + '</td>' +
-      '<td><input type="number" min="0" class="num-input gl-input" data-id="' + p.id + '" value="' + (p.golesLocal===null?'':p.golesLocal) + '"></td>' +
+      '<td><input type="number" min="0" class="num-input gl-input"' + bloqueo + ' data-id="' + p.id + '" value="' + (p.golesLocal===null?'':p.golesLocal) + '"></td>' +
       '<td style="text-align:center;color:#9aa4bd;">vs</td>' +
-      '<td><input type="number" min="0" class="num-input gv-input" data-id="' + p.id + '" value="' + (p.golesVisita===null?'':p.golesVisita) + '"></td>' +
+      '<td><input type="number" min="0" class="num-input gv-input"' + bloqueo + ' data-id="' + p.id + '" value="' + (p.golesVisita===null?'':p.golesVisita) + '"></td>' +
       '<td>' + escapeHtml(t.visitaNombre) + '</td>' +
       (esPenales ?
-        ('<td><input type="number" min="0" class="num-input pl-input" data-id="' + p.id + '" placeholder="Pen." value="' + (p.penalesLocal===null?'':p.penalesLocal) + '"></td>' +
-         '<td><input type="number" min="0" class="num-input pv-input" data-id="' + p.id + '" placeholder="Pen." value="' + (p.penalesVisita===null?'':p.penalesVisita) + '"></td>')
+        ('<td><input type="number" min="0" class="num-input pl-input"' + bloqueo + ' data-id="' + p.id + '" placeholder="Pen." value="' + (p.penalesLocal===null?'':p.penalesLocal) + '"></td>' +
+         '<td><input type="number" min="0" class="num-input pv-input"' + bloqueo + ' data-id="' + p.id + '" placeholder="Pen." value="' + (p.penalesVisita===null?'':p.penalesVisita) + '"></td>')
         : '<td></td><td></td>') +
       '<td>' + resultadoTexto(p) + '</td>' +
-      '<td>' + (p.auto ? '<span class="muted" style="font-size:11px;">Automático</span>' : '<button class="btn btn-ghost btn-xs del-match" data-id="' + p.id + '">🗑️</button>') + '</td>' +
+      '<td>' + (!editable ? '<span class="muted" style="font-size:11px;" title="Solo el administrador puede corregir un resultado de una jornada cerrada.">🔒 Cerrado</span>'
+             : p.auto ? '<span class="muted" style="font-size:11px;">Automático</span>'
+             : esAdmin() ? '<button class="btn btn-ghost btn-xs del-match" data-id="' + p.id + '">🗑️</button>' : '') + '</td>' +
     '</tr>';
   }
 
@@ -1332,7 +1342,7 @@ function renderProgramacion(){
     '<div class="card">' +
       '<div class="card-head"><div><h3>Fase de grupos</h3>' +
       '<p class="desc" style="margin:2px 0 0;">Todos contra todos a una rueda, 5 fechas. Calendario vigente: dos partidos por día (21:00 y 22:00), de lunes a jueves, ordenado para maximizar el descanso entre partidos de cada club.</p></div>' +
-      '<button class="btn btn-primary btn-xs" id="btnAddMatch">➕ Agregar partido</button></div>' +
+      (esAdmin() ? '<button class="btn btn-primary btn-xs" id="btnAddMatch">➕ Agregar partido</button>' : '') + '</div>' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
       '<th>N°</th><th>Fecha</th><th>Grupo</th><th>Día</th><th>Hora</th><th>Local</th><th>GL</th><th></th><th>GV</th><th>Visita</th><th>Pen. L</th><th>Pen. V</th><th>Resultado</th><th></th>' +
       '</tr></thead><tbody>' + grupos.map(fila).join('') + '</tbody></table></div>' +
@@ -1355,6 +1365,7 @@ function renderProgramacion(){
   panel.querySelectorAll('.gl-input').forEach(function(inp){
     inp.addEventListener('change', function(){
       var p = getPartido(STATE, inp.dataset.id);
+      if (!puedeEditarResultado(p)){ toast('No tiene permiso para editar este resultado.', true); renderCurrentTab(); return; }
       p.golesLocal = inp.value === '' ? null : Number(inp.value);
       logResultado(p);
       renderAll();
@@ -1363,6 +1374,7 @@ function renderProgramacion(){
   panel.querySelectorAll('.gv-input').forEach(function(inp){
     inp.addEventListener('change', function(){
       var p = getPartido(STATE, inp.dataset.id);
+      if (!puedeEditarResultado(p)){ toast('No tiene permiso para editar este resultado.', true); renderCurrentTab(); return; }
       p.golesVisita = inp.value === '' ? null : Number(inp.value);
       logResultado(p);
       renderAll();
@@ -1371,6 +1383,7 @@ function renderProgramacion(){
   panel.querySelectorAll('.pl-input').forEach(function(inp){
     inp.addEventListener('change', function(){
       var p = getPartido(STATE, inp.dataset.id);
+      if (!puedeEditarResultado(p)){ toast('No tiene permiso para editar este resultado.', true); renderCurrentTab(); return; }
       p.penalesLocal = inp.value === '' ? null : Number(inp.value);
       renderAll();
     });
@@ -1378,6 +1391,7 @@ function renderProgramacion(){
   panel.querySelectorAll('.pv-input').forEach(function(inp){
     inp.addEventListener('change', function(){
       var p = getPartido(STATE, inp.dataset.id);
+      if (!puedeEditarResultado(p)){ toast('No tiene permiso para editar este resultado.', true); renderCurrentTab(); return; }
       p.penalesVisita = inp.value === '' ? null : Number(inp.value);
       renderAll();
     });
@@ -2531,6 +2545,484 @@ function initIO(){
 
 
 /* ---- main_firebase.js ---- */
+/* ---- ui_usuarios.js ---- */
+/* ============================================================================
+   USUARIOS, CLAVE DE ACCESO Y PERMISOS
+
+   ALCANCE REAL DE ESTA PROTECCION — LEER ANTES DE CONFIAR EN ELLA:
+   Esto es un control de acceso operativo, no seguridad criptográfica. Las
+   claves se guardan como hash SHA-256 con "salt" (nunca en texto plano), pero
+   viajan y se almacenan dentro del mismo documento compartido de Firestore que
+   el resto del campeonato, y la validación ocurre en el navegador. Alguien con
+   conocimientos técnicos puede leer el código de la página o la base de datos
+   y saltarse esta pantalla. Sirve para ordenar quién hace qué y para dejar
+   registro en el Historial de Actividad; no para resistir a un atacante.
+   Si se necesita seguridad real, el camino es Firebase Authentication con
+   reglas de Firestore que exijan sesión válida.
+
+   ROLES
+   - admin   : todo, incluida la gestión de usuarios y la importación de datos.
+   - mesa    : carga resultados de la jornada en curso, planillas, actas,
+               jugadores y sanciones. No edita Equipos, Circular ni calendario.
+   - general : solo consulta. Su ingreso también queda registrado.
+   ============================================================================ */
+
+/* --- SHA-256 en JS puro (sin depender de crypto.subtle ni de contexto seguro) --- */
+var SHA256 = (function(){
+  var K = [
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+  ];
+  function rotr(x,n){ return (x >>> n) | (x << (32-n)); }
+  function utf8Bytes(str){
+    var out = [], i, c;
+    for (i = 0; i < str.length; i++){
+      c = str.charCodeAt(i);
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800){ out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f)); }
+      else if (c < 0xd800 || c >= 0xe000){ out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
+      else {
+        i++;
+        c = 0x10000 + (((c & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
+        out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+      }
+    }
+    return out;
+  }
+  return function(str){
+    var bytes = utf8Bytes(str);
+    var bitLen = bytes.length * 8;
+    bytes.push(0x80);
+    while (bytes.length % 64 !== 56) bytes.push(0);
+    var hi = Math.floor(bitLen / 4294967296), lo = bitLen >>> 0;
+    bytes.push((hi>>>24)&255,(hi>>>16)&255,(hi>>>8)&255,hi&255,(lo>>>24)&255,(lo>>>16)&255,(lo>>>8)&255,lo&255);
+
+    var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+    var w = new Array(64), i, t, a,b,c,d,e,f,g,h, s0,s1,ch,maj,t1,t2;
+    for (i = 0; i < bytes.length; i += 64){
+      for (t = 0; t < 16; t++){
+        w[t] = (bytes[i+t*4]<<24) | (bytes[i+t*4+1]<<16) | (bytes[i+t*4+2]<<8) | bytes[i+t*4+3];
+      }
+      for (t = 16; t < 64; t++){
+        s0 = rotr(w[t-15],7) ^ rotr(w[t-15],18) ^ (w[t-15] >>> 3);
+        s1 = rotr(w[t-2],17) ^ rotr(w[t-2],19) ^ (w[t-2] >>> 10);
+        w[t] = (w[t-16] + s0 + w[t-7] + s1) | 0;
+      }
+      a=H[0]; b=H[1]; c=H[2]; d=H[3]; e=H[4]; f=H[5]; g=H[6]; h=H[7];
+      for (t = 0; t < 64; t++){
+        s1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
+        ch = (e & f) ^ (~e & g);
+        t1 = (h + s1 + ch + K[t] + w[t]) | 0;
+        s0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
+        maj = (a & b) ^ (a & c) ^ (b & c);
+        t2 = (s0 + maj) | 0;
+        h=g; g=f; f=e; e=(d+t1)|0; d=c; c=b; b=a; a=(t1+t2)|0;
+      }
+      H[0]=(H[0]+a)|0; H[1]=(H[1]+b)|0; H[2]=(H[2]+c)|0; H[3]=(H[3]+d)|0;
+      H[4]=(H[4]+e)|0; H[5]=(H[5]+f)|0; H[6]=(H[6]+g)|0; H[7]=(H[7]+h)|0;
+    }
+    var hex = '';
+    for (i = 0; i < 8; i++){
+      hex += ('00000000' + (H[i] >>> 0).toString(16)).slice(-8);
+    }
+    return hex;
+  };
+})();
+
+function nuevoSalt(){
+  var s = '', chars = '0123456789abcdef';
+  for (var i = 0; i < 12; i++) s += chars.charAt(Math.floor(Math.random()*16));
+  return s;
+}
+function hashClave(salt, clave){ return SHA256(salt + ':' + clave); }
+
+/* --- Roles y usuarios iniciales --------------------------------------------- */
+var ROLES = {
+  admin:   { etiqueta: 'Administrador',            desc: 'Acceso total: edita todo y administra los usuarios.' },
+  mesa:    { etiqueta: 'Mesa de control',          desc: 'Carga resultados de la jornada en curso, planillas, actas, jugadores y sanciones.' },
+  general: { etiqueta: 'General (solo consulta)',  desc: 'Puede ver toda la información, sin editar nada.' }
+};
+
+var TABS_POR_ROL = {
+  admin:   ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular','historial','usuarios'],
+  mesa:    ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular','historial'],
+  general: ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular']
+};
+
+function crearUsuariosIniciales(){
+  return [
+    { id: 'u_admin',   usuario: 'admin',   nombre: 'Administrador',           rol: 'admin',
+      salt: '98c453c55bf0', hash: 'f497b2e9fa0c8f67f2f908334e134c4267aaf570d2d3d7f137a2c52d3d546159', activo: true },
+    { id: 'u_mesa',    usuario: 'mesa',    nombre: 'Mesa de Control',         rol: 'mesa',
+      salt: '7b81c08a9b1a', hash: '9300d756878cb9b1632bc7fe6239efeeaf04b3ce574c0a901d7a63ba4fcfbb02', activo: true },
+    { id: 'u_general', usuario: 'general', nombre: 'General',                 rol: 'general',
+      salt: '60a729c7e346', hash: '31afa9448ed683ed6cdc3f8e606984e2c99c85462c2a6240a206f1da36468aa4', activo: true }
+  ];
+}
+
+/* --- Sesión ---------------------------------------------------------------- */
+var SESION_KEY = 'ebdb2026_sesion';
+var SESION = null;
+var INTENTOS_FALLIDOS = 0;
+var BLOQUEADO_HASTA = 0;
+
+function guardarSesionLocal(s){
+  try { sessionStorage.setItem(SESION_KEY, JSON.stringify(s)); } catch (e) { /* sin almacenamiento: sigue en memoria */ }
+}
+function leerSesionLocal(){
+  try { return JSON.parse(sessionStorage.getItem(SESION_KEY) || 'null'); } catch (e) { return null; }
+}
+function borrarSesionLocal(){
+  try { sessionStorage.removeItem(SESION_KEY); } catch (e) { /* nada */ }
+}
+
+function usuariosState(){
+  if (!STATE.usuarios || !STATE.usuarios.length) STATE.usuarios = crearUsuariosIniciales();
+  return STATE.usuarios;
+}
+function buscarUsuario(nombreUsuario){
+  var u = (nombreUsuario || '').trim().toLowerCase();
+  return usuariosState().filter(function(x){ return (x.usuario || '').toLowerCase() === u; })[0] || null;
+}
+
+function rolActual(){ return SESION ? SESION.rol : null; }
+function esAdmin(){ return rolActual() === 'admin'; }
+function esMesa(){ return rolActual() === 'mesa'; }
+function soloConsulta(){ return rolActual() === 'general'; }
+function puedeEditarAlgo(){ return esAdmin() || esMesa(); }
+
+/* Mesa de control: puede corregir resultados hasta que termina la jornada.
+   La jornada se cierra a las 06:00 del día siguiente al último partido de esa
+   misma fecha (así una corrección pasada la medianoche todavía alcanza). */
+function jornadaAbierta(p){
+  var mismos = STATE.partidos.filter(function(x){ return x.jornada === p.jornada && x.dia; });
+  var dias = mismos.map(function(x){ return x.dia; }).sort();
+  var ultimo = dias.length ? dias[dias.length-1] : p.dia;
+  if (!ultimo) return true;
+  var cierre = new Date(ultimo + 'T00:00:00');
+  cierre.setDate(cierre.getDate() + 1);
+  cierre.setHours(6, 0, 0, 0);
+  return new Date() <= cierre;
+}
+function puedeEditarResultado(p){
+  if (esAdmin()) return true;
+  if (!esMesa()) return false;
+  return jornadaAbierta(p);
+}
+
+function aplicarPermisosUI(){
+  var rol = rolActual();
+  document.body.classList.remove('rol-admin','rol-mesa','rol-general');
+  if (rol) document.body.classList.add('rol-' + rol);
+
+  var permitidas = TABS_POR_ROL[rol] || [];
+  document.querySelectorAll('.tab-btn').forEach(function(b){
+    var ok = permitidas.indexOf(b.dataset.tab) !== -1;
+    b.classList.toggle('hidden', !ok);
+  });
+  var btnImp = document.getElementById('btnImport');
+  if (btnImp) btnImp.classList.toggle('hidden', !esAdmin());
+  var btnExp = document.getElementById('btnExport');
+  if (btnExp) btnExp.classList.toggle('hidden', !puedeEditarAlgo());
+
+  if (permitidas.indexOf(CURRENT_TAB) === -1) switchTab(permitidas[0] || 'equipos');
+  renderUserChip();
+}
+
+function renderUserChip(){
+  var el = document.getElementById('userChip');
+  if (!el) return;
+  if (!SESION){ el.textContent = '👤 Sin sesión'; el.title = ''; return; }
+  el.textContent = '👤 ' + SESION.nombre;
+  el.title = ROLES[SESION.rol] ? ROLES[SESION.rol].etiqueta : SESION.rol;
+  var pill = document.getElementById('rolChip');
+  if (pill) pill.textContent = (ROLES[SESION.rol] ? ROLES[SESION.rol].etiqueta : SESION.rol);
+}
+
+function getAutor(){
+  return SESION ? (SESION.nombre + ' (' + SESION.usuario + ')') : 'Sin identificar';
+}
+
+/* --- Pantalla de ingreso ---------------------------------------------------- */
+function mostrarLogin(mensaje){
+  var ov = document.getElementById('loginOverlay');
+  if (!ov) return;
+  ov.classList.remove('hidden');
+  document.body.classList.add('bloqueado');
+  var msg = document.getElementById('loginMsg');
+  if (msg){
+    msg.textContent = mensaje || '';
+    msg.style.display = mensaje ? 'block' : 'none';
+  }
+  var inp = document.getElementById('loginUsuario');
+  if (inp) setTimeout(function(){ inp.focus(); }, 80);
+}
+function ocultarLogin(){
+  var ov = document.getElementById('loginOverlay');
+  if (ov) ov.classList.add('hidden');
+  document.body.classList.remove('bloqueado');
+}
+
+function intentarIngreso(){
+  var msg = document.getElementById('loginMsg');
+  function error(texto){
+    if (msg){ msg.textContent = texto; msg.style.display = 'block'; }
+  }
+  var ahora = Date.now();
+  if (ahora < BLOQUEADO_HASTA){
+    error('Demasiados intentos fallidos. Espere ' + Math.ceil((BLOQUEADO_HASTA - ahora)/1000) + ' segundos.');
+    return;
+  }
+  var u = (document.getElementById('loginUsuario').value || '').trim();
+  var c = document.getElementById('loginClave').value || '';
+  if (!u || !c){ error('Ingrese usuario y clave.'); return; }
+
+  var user = buscarUsuario(u);
+  if (!user || user.activo === false || hashClave(user.salt, c) !== user.hash){
+    INTENTOS_FALLIDOS++;
+    if (INTENTOS_FALLIDOS >= 5){
+      BLOQUEADO_HASTA = ahora + 30000;
+      INTENTOS_FALLIDOS = 0;
+      error('Demasiados intentos fallidos. Espere 30 segundos.');
+    } else {
+      error('Usuario o clave incorrectos.');
+    }
+    document.getElementById('loginClave').value = '';
+    return;
+  }
+
+  INTENTOS_FALLIDOS = 0;
+  SESION = { id: user.id, usuario: user.usuario, nombre: user.nombre, rol: user.rol, desde: new Date().toISOString() };
+  guardarSesionLocal(SESION);
+  document.getElementById('loginClave').value = '';
+  ocultarLogin();
+  aplicarPermisosUI();
+  logActivity('Ingreso al sistema', SESION.nombre + ' — ' + (ROLES[SESION.rol] ? ROLES[SESION.rol].etiqueta : SESION.rol));
+  renderAll();
+  renderCurrentTab();
+  toast('Bienvenido, ' + SESION.nombre + '.');
+}
+
+function cerrarSesion(){
+  if (!SESION) return;
+  var quien = SESION.nombre;
+  logActivity('Salida del sistema', quien);
+  scheduleSave();
+  SESION = null;
+  borrarSesionLocal();
+  document.body.classList.remove('rol-admin','rol-mesa','rol-general');
+  mostrarLogin('Sesión cerrada. Ingrese nuevamente para continuar.');
+}
+
+/* Restaura la sesión de la pestaña del navegador, si el usuario sigue vigente. */
+function restaurarSesion(){
+  var s = leerSesionLocal();
+  if (!s || !s.usuario) return false;
+  var user = buscarUsuario(s.usuario);
+  if (!user || user.activo === false) return false;
+  SESION = { id: user.id, usuario: user.usuario, nombre: user.nombre, rol: user.rol, desde: s.desde || new Date().toISOString() };
+  return true;
+}
+
+function initSesionUI(){
+  var btnIngresar = document.getElementById('btnIngresar');
+  if (btnIngresar) btnIngresar.addEventListener('click', intentarIngreso);
+  ['loginUsuario','loginClave'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', function(ev){ if (ev.key === 'Enter') intentarIngreso(); });
+  });
+  var btnSalir = document.getElementById('btnSalir');
+  if (btnSalir) btnSalir.addEventListener('click', function(){
+    confirmModal({
+      title: 'Cerrar sesión',
+      html: '<p>¿Cerrar la sesión de <strong>' + escapeHtml(SESION ? SESION.nombre : '') + '</strong>? Deberá ingresar su clave nuevamente.</p>',
+      okText: 'Cerrar sesión',
+      onOk: cerrarSesion
+    });
+  });
+}
+
+/* ============================================================================
+   TAB: USUARIOS (solo administrador)
+   ============================================================================ */
+function renderUsuarios(){
+  var panel = document.getElementById('panel-usuarios');
+  if (!panel) return;
+  if (!esAdmin()){ panel.innerHTML = ''; return; }
+  var us = usuariosState();
+
+  function fila(u){
+    return '<tr>' +
+      '<td><strong>' + escapeHtml(u.usuario) + '</strong></td>' +
+      '<td>' + escapeHtml(u.nombre) + '</td>' +
+      '<td><span class="pill pill-muted">' + (ROLES[u.rol] ? ROLES[u.rol].etiqueta : escapeHtml(u.rol)) + '</span></td>' +
+      '<td>' + (u.activo === false ? '<span class="pill pill-muted">Desactivado</span>' : '<span class="pill pill-A">Activo</span>') + '</td>' +
+      '<td style="white-space:nowrap;">' +
+        '<button class="btn btn-ghost btn-xs us-clave" data-id="' + u.id + '">🔑 Cambiar clave</button> ' +
+        '<button class="btn btn-ghost btn-xs us-editar" data-id="' + u.id + '">✏️ Editar</button> ' +
+        (u.id === (SESION && SESION.id)
+          ? '<span class="muted" style="font-size:11px;">sesión actual</span>'
+          : '<button class="btn btn-ghost btn-xs us-borrar" data-id="' + u.id + '">🗑️</button>') +
+      '</td>' +
+    '</tr>';
+  }
+
+  panel.innerHTML =
+    '<div class="card">' +
+      '<div class="card-head"><div><h3>Usuarios y claves de acceso</h3>' +
+      '<p class="desc" style="margin:2px 0 0;">Sin usuario y clave nadie puede entrar a la plataforma. Cada ingreso, ' +
+      'salida y cambio queda registrado en el Historial de Actividad, incluidos los usuarios de solo consulta.</p></div>' +
+      '<button class="btn btn-primary btn-xs" id="btnAddUsuario">➕ Agregar usuario</button></div>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th>Usuario</th><th>Nombre visible</th><th>Perfil</th><th>Estado</th><th></th>' +
+      '</tr></thead><tbody>' + us.map(fila).join('') + '</tbody></table></div>' +
+    '</div>' +
+    '<div class="card">' +
+      '<h3>Qué puede hacer cada perfil</h3>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Perfil</th><th>Alcance</th></tr></thead><tbody>' +
+        '<tr><td><strong>Administrador</strong></td><td>Edita todo: equipos, calendario, resultados, planillas, actas, jugadores, sanciones y circular. Administra usuarios, importa y descarga datos.</td></tr>' +
+        '<tr><td><strong>Mesa de control</strong></td><td>Carga y corrige resultados mientras la jornada está abierta (hasta las 06:00 del día siguiente al último partido de esa fecha), más planillas, actas, jugadores y sanciones. No edita equipos, calendario ni circular.</td></tr>' +
+        '<tr><td><strong>General</strong></td><td>Solo consulta. Ve todas las pestañas salvo el Historial de Actividad y la gestión de usuarios.</td></tr>' +
+      '</tbody></table></div>' +
+      '<p class="desc" style="margin-top:10px;">Las claves se guardan cifradas (hash SHA-256 con salt), nunca en texto ' +
+      'legible: si alguien olvida la suya, no se puede recuperar, hay que asignarle una nueva. Este control ordena el ' +
+      'trabajo del equipo, pero no resiste a alguien con conocimientos técnicos que inspeccione la página o la base de datos.</p>' +
+    '</div>';
+
+  function opcionesRol(sel){
+    return Object.keys(ROLES).map(function(r){
+      return '<option value="' + r + '"' + (r === sel ? ' selected' : '') + '>' + ROLES[r].etiqueta + '</option>';
+    }).join('');
+  }
+
+  var btnAdd = document.getElementById('btnAddUsuario');
+  if (btnAdd) btnAdd.addEventListener('click', function(){
+    formModal({
+      title: 'Agregar usuario', okText: 'Crear usuario',
+      bodyHtml:
+        '<div class="grid-2">' +
+          '<div class="field"><label>Usuario (para ingresar)</label><input class="txt-input" name="usuario" placeholder="Ej: mesa2"></div>' +
+          '<div class="field"><label>Nombre visible</label><input class="txt-input" name="nombre" placeholder="Ej: Mesa de Control 2"></div>' +
+          '<div class="field"><label>Perfil</label><select name="rol">' + opcionesRol('mesa') + '</select></div>' +
+          '<div class="field"><label>Clave</label><input class="txt-input" name="clave" placeholder="Mínimo 6 caracteres"></div>' +
+        '</div>',
+      onOk: function(form){
+        var usuario = form.usuario.value.trim().toLowerCase();
+        var nombre = form.nombre.value.trim();
+        var clave = form.clave.value;
+        if (!usuario || !nombre){ toast('Complete usuario y nombre.', true); return false; }
+        if (/\s/.test(usuario)){ toast('El usuario no puede tener espacios.', true); return false; }
+        if (clave.length < 6){ toast('La clave debe tener al menos 6 caracteres.', true); return false; }
+        if (buscarUsuario(usuario)){ toast('Ya existe un usuario con ese nombre.', true); return false; }
+        var salt = nuevoSalt();
+        usuariosState().push({ id: uid('u'), usuario: usuario, nombre: nombre, rol: form.rol.value,
+          salt: salt, hash: hashClave(salt, clave), activo: true });
+        logActivity('Usuario creado', usuario + ' — ' + (ROLES[form.rol.value] ? ROLES[form.rol.value].etiqueta : form.rol.value));
+        renderAll();
+        toast('Usuario creado.');
+      }
+    });
+  });
+
+  panel.querySelectorAll('.us-editar').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var u = usuariosState().filter(function(x){ return x.id === btn.dataset.id; })[0];
+      if (!u) return;
+      formModal({
+        title: 'Editar usuario', okText: 'Guardar',
+        bodyHtml:
+          '<div class="grid-2">' +
+            '<div class="field"><label>Usuario</label><input class="txt-input" name="usuario" value="' + escapeHtml(u.usuario) + '"></div>' +
+            '<div class="field"><label>Nombre visible</label><input class="txt-input" name="nombre" value="' + escapeHtml(u.nombre) + '"></div>' +
+            '<div class="field"><label>Perfil</label><select name="rol">' + opcionesRol(u.rol) + '</select></div>' +
+            '<div class="field"><label>Estado</label><select name="activo">' +
+              '<option value="si"' + (u.activo === false ? '' : ' selected') + '>Activo</option>' +
+              '<option value="no"' + (u.activo === false ? ' selected' : '') + '>Desactivado</option>' +
+            '</select></div>' +
+          '</div>',
+        onOk: function(form){
+          var usuario = form.usuario.value.trim().toLowerCase();
+          var nombre = form.nombre.value.trim();
+          if (!usuario || !nombre){ toast('Complete usuario y nombre.', true); return false; }
+          var otro = buscarUsuario(usuario);
+          if (otro && otro.id !== u.id){ toast('Ya existe un usuario con ese nombre.', true); return false; }
+          var esYo = SESION && SESION.id === u.id;
+          if (esYo && (form.rol.value !== 'admin' || form.activo.value === 'no')){
+            toast('No puede quitarse a sí mismo el acceso de administrador.', true); return false;
+          }
+          var quedanAdmins = usuariosState().filter(function(x){
+            return x.id !== u.id && x.rol === 'admin' && x.activo !== false;
+          }).length;
+          if (u.rol === 'admin' && (form.rol.value !== 'admin' || form.activo.value === 'no') && quedanAdmins === 0){
+            toast('Debe quedar al menos un administrador activo.', true); return false;
+          }
+          u.usuario = usuario; u.nombre = nombre; u.rol = form.rol.value; u.activo = form.activo.value === 'si';
+          if (esYo){ SESION.usuario = u.usuario; SESION.nombre = u.nombre; SESION.rol = u.rol; guardarSesionLocal(SESION); }
+          logActivity('Usuario editado', usuario);
+          aplicarPermisosUI();
+          renderAll();
+          toast('Usuario actualizado.');
+        }
+      });
+    });
+  });
+
+  panel.querySelectorAll('.us-clave').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var u = usuariosState().filter(function(x){ return x.id === btn.dataset.id; })[0];
+      if (!u) return;
+      formModal({
+        title: 'Cambiar clave de ' + u.usuario, okText: 'Cambiar clave',
+        bodyHtml:
+          '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">La clave anterior no se puede consultar. ' +
+          'Al guardar, la persona deberá ingresar con la clave nueva.</p>' +
+          '<div class="field"><label>Clave nueva</label><input class="txt-input" name="clave" style="width:100%;" placeholder="Mínimo 6 caracteres"></div>' +
+          '<div class="field"><label>Repetir clave</label><input class="txt-input" name="clave2" style="width:100%;"></div>',
+        onOk: function(form){
+          var c1 = form.clave.value, c2 = form.clave2.value;
+          if (c1.length < 6){ toast('La clave debe tener al menos 6 caracteres.', true); return false; }
+          if (c1 !== c2){ toast('Las dos claves no coinciden.', true); return false; }
+          u.salt = nuevoSalt();
+          u.hash = hashClave(u.salt, c1);
+          logActivity('Clave cambiada', u.usuario);
+          renderAll();
+          toast('Clave actualizada.');
+        }
+      });
+    });
+  });
+
+  panel.querySelectorAll('.us-borrar').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var u = usuariosState().filter(function(x){ return x.id === btn.dataset.id; })[0];
+      if (!u) return;
+      var quedanAdmins = usuariosState().filter(function(x){
+        return x.id !== u.id && x.rol === 'admin' && x.activo !== false;
+      }).length;
+      if (u.rol === 'admin' && quedanAdmins === 0){ toast('Debe quedar al menos un administrador activo.', true); return; }
+      confirmModal({
+        title: 'Eliminar usuario',
+        html: '<p>¿Eliminar al usuario <strong>' + escapeHtml(u.usuario) + '</strong>? Perderá el acceso de inmediato.</p>',
+        okText: 'Eliminar', okClass: 'btn-danger',
+        onOk: function(){
+          STATE.usuarios = usuariosState().filter(function(x){ return x.id !== u.id; });
+          logActivity('Usuario eliminado', u.usuario);
+          renderAll();
+          toast('Usuario eliminado.');
+        }
+      });
+    });
+  });
+}
+RENDERERS.usuarios = renderUsuarios;
+
+
 /* ============================================================================
    INICIALIZACION (variante auto-hospedada, guardado vía Firebase)
    ============================================================================ */
@@ -2539,8 +3031,9 @@ var STATE = buildInitialState();
 document.addEventListener('DOMContentLoaded', async function(){
   initTabsNav();
   initIO();
-  initAutorUI();
+  initSesionUI();
   setSaveStatus('sinLinea');
+  mostrarLogin('');  // la plataforma queda bloqueada hasta que alguien ingrese
 
   var ready = await initFirebasePersistence();
   ONLINE_SYNC = !!ready;
@@ -2551,6 +3044,17 @@ document.addEventListener('DOMContentLoaded', async function(){
   switchTab('equipos');
   BOOTSTRAPPED = true;
   setSaveStatus(ready ? 'guardado' : 'sinLinea');
+
+  /* Si esta pestaña del navegador ya tenía sesión, se retoma; si no, queda la
+     pantalla de ingreso. Los usuarios viven en el estado compartido, así que
+     esto se resuelve después de cargar los datos. */
+  if (restaurarSesion()){
+    ocultarLogin();
+    aplicarPermisosUI();
+    renderCurrentTab();
+  } else {
+    mostrarLogin('');
+  }
 });
 
 </script>
