@@ -20,7 +20,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light dark">
-<title>Estrellas de Barrio 2026</title>
+<title>Liga de Fútbol Estrellas de Barrio 2026</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --panel-2:#f6f8fb; --line:#e1e6ef;
@@ -69,10 +69,12 @@
     display:flex; flex-direction:column; position:sticky; top:0; height:100vh; overflow-y:auto;
   }
   .brand{ display:flex; align-items:center; gap:10px; padding:18px 16px 14px; border-bottom:1px solid var(--side-line); }
+  /* Escudo oficial de la Liga Estrellas de Barrio, incrustado como imagen para
+     que el archivo siga siendo autocontenido. */
   .brand-badge{
-    width:36px;height:36px;border-radius:10px; flex-shrink:0;
-    background:conic-gradient(from 180deg,var(--green),var(--gold),var(--green));
-    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#08131f;
+    width:40px;height:40px;border-radius:10px; flex-shrink:0; background:#fff;
+    background-image:url('data:image/jpeg;base64,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'); background-size:contain;
+    background-position:center; background-repeat:no-repeat;
   }
   .brand h1{ font-size:13.5px; margin:0; line-height:1.25; font-weight:700; }
   .brand p{ margin:2px 0 0; font-size:10.5px; color:#9fb0d0; }
@@ -176,8 +178,9 @@
   .login-card{ width:100%; max-width:380px; background:var(--panel); border:1px solid var(--line);
     border-radius:14px; padding:22px; box-shadow:0 18px 45px rgba(15,23,42,.14); }
   .login-brand{ display:flex; gap:12px; align-items:center; margin-bottom:14px; }
-  .login-logo{ width:40px; height:40px; border-radius:11px; background:var(--green); color:#fff;
-    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; flex:0 0 auto; }
+  .login-logo{ width:52px; height:52px; border-radius:11px; background:#fff; flex:0 0 auto;
+    background-image:url('data:image/jpeg;base64,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'); background-size:contain;
+    background-position:center; background-repeat:no-repeat; }
   .login-brand h1{ margin:0; font-size:15.5px; }
   .login-brand p{ margin:1px 0 0; font-size:11.5px; color:var(--muted); }
   .login-desc{ font-size:12.5px; color:var(--muted); margin:0 0 14px; }
@@ -286,9 +289,9 @@
 <div id="shell">
   <aside id="sidebar">
     <div class="brand">
-      <div class="brand-badge">EB</div>
+      <div class="brand-badge"></div>
       <div>
-        <h1>Estrellas de Barrio 2026</h1>
+        <h1>Liga de Fútbol Estrellas de Barrio 2026</h1>
         <p>Plataforma de gestión del campeonato</p>
       </div>
     </div>
@@ -305,7 +308,7 @@
       <button class="tab-btn" data-tab="historial"><span class="ic">🕒</span> Historial de Actividad</button>
       <button class="tab-btn" data-tab="usuarios"><span class="ic">🔐</span> Usuarios y Accesos</button>
     </nav>
-    <div class="side-foot">Estrellas de Barrio 2026 · Peñalolén</div>
+    <div class="side-foot">Liga de Fútbol Estrellas de Barrio 2026 · Peñalolén</div>
   </aside>
 
   <div id="main">
@@ -322,6 +325,7 @@
         <span class="pill save-status pill-muted" id="saveStatus">● Cargando…</span>
         <button class="btn btn-ghost btn-xs needs-write" id="btnImport">📂 Importar datos</button>
         <input type="file" id="fileImport" accept="application/json" class="hidden">
+        <input type="file" id="fileNomina" accept=".xlsx" class="hidden">
         <button class="btn btn-primary btn-xs" id="btnExport">📄 Ver / copiar mis datos</button>
         <button class="btn btn-ghost btn-xs" id="btnSalir">🚪 Salir</button>
       </div>
@@ -344,8 +348,8 @@
 
 <div id="loginOverlay">
   <div class="login-card">
-    <div class="login-brand"><span class="login-logo">EB</span>
-      <div><h1>Estrellas de Barrio 2026</h1><p>Plataforma de gestión del campeonato</p></div>
+    <div class="login-brand"><span class="login-logo"></span>
+      <div><h1>Liga de Fútbol Estrellas de Barrio 2026</h1><p>Plataforma de gestión del campeonato</p></div>
     </div>
     <p class="login-desc">Ingrese con su usuario y clave. Cada ingreso queda registrado en el Historial de Actividad.</p>
     <div class="field"><label>Usuario</label><input class="txt-input" id="loginUsuario" autocomplete="username" placeholder="Ej: admin"></div>
@@ -1919,7 +1923,10 @@ function renderJugadores(){
 
   panel.innerHTML =
     '<div class="card">' +
-      '<h3>Seleccione un equipo</h3>' +
+      '<div class="card-head"><div><h3>Seleccione un equipo</h3>' +
+      '<p class="desc" style="margin:2px 0 0;">La nómina que entrega cada club se puede cargar directo desde el ' +
+      'formato oficial en Excel, sin digitar jugador por jugador.</p></div>' +
+      (puedeEditarAlgo() ? '<button class="btn btn-primary btn-xs" id="btnImportNomina">📥 Importar nómina (Excel)</button>' : '') + '</div>' +
       '<select id="jugadoresTeamSel" style="min-width:280px;">' + opts + '</select>' +
     '</div>' +
     '<div id="jugadoresBody"></div>';
@@ -1928,6 +1935,8 @@ function renderJugadores(){
     JUGADORES_SELECTED_TEAM = this.value;
     renderJugadoresBody();
   });
+  var btnNom = document.getElementById('btnImportNomina');
+  if (btnNom) btnNom.addEventListener('click', abrirImportarNomina);
   renderJugadoresBody();
 }
 RENDERERS.jugadores = renderJugadores;
@@ -1948,6 +1957,7 @@ function renderJugadoresBody(){
         '<option'+(j.cargo==='Cuerpo técnico'?' selected':'')+'>Cuerpo técnico</option>' +
         '<option'+(j.cargo==='Persona delegada'?' selected':'')+'>Persona delegada</option></select></td>' +
       '<td><input class="txt-input jg-rut" data-id="'+j.id+'" value="'+escapeHtml(j.rut||'')+'" style="width:110px;"></td>' +
+      '<td><input class="txt-input jg-nacionalidad" data-id="'+j.id+'" value="'+escapeHtml(j.nacionalidad||'')+'" style="width:110px;" placeholder="Chilena"></td>' +
       '<td><input class="txt-input jg-fecha" type="date" data-id="'+j.id+'" value="'+escapeHtml(j.fechaNac||'')+'"></td>' +
       '<td style="text-align:center;"><b>' + s.goles + '</b></td>' +
       '<td style="text-align:center;">' + s.amarillas + '</td>' +
@@ -1957,13 +1967,13 @@ function renderJugadoresBody(){
         '<option'+(j.estado==='Excluido'?' selected':'')+'>Excluido</option></select></td>' +
       '<td><button class="btn btn-ghost btn-xs del-jugador" data-id="'+j.id+'">🗑️</button></td>' +
     '</tr>';
-  }).join('') || '<tr><td colspan="10" class="empty-hint">Aún no hay jugadores en este equipo.</td></tr>';
+  }).join('') || '<tr><td colspan="11" class="empty-hint">Aún no hay jugadores en este equipo.</td></tr>';
 
   body.innerHTML = '<div class="card">' +
     '<div class="card-head"><h3>' + teamLogoHtml(equipo,'lg') + ' &nbsp;' + escapeHtml(equipo ? equipo.nombre : '') + '</h3>' +
     '<span class="muted" style="font-size:12px;">' + jugadores.length + ' inscritos (máx. 25, bases 3.1)</span></div>' +
     '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>Dorsal</th><th>Nombre</th><th>Cargo</th><th>RUT</th><th>Fecha Nac.</th><th>⚽ Goles</th><th>🟨 Amarillas</th><th>🟥 Rojas</th><th>Estado</th><th></th>' +
+      '<th>Dorsal</th><th>Nombre</th><th>Cargo</th><th>RUT</th><th>Nacionalidad</th><th>Fecha Nac.</th><th>⚽ Goles</th><th>🟨 Amarillas</th><th>🟥 Rojas</th><th>Estado</th><th></th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '<form id="addJugadorForm" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
       '<div class="field"><label>Nombre</label><input class="txt-input" name="nombre" placeholder="Nombre completo"></div>' +
@@ -1989,6 +1999,7 @@ function renderJugadoresBody(){
   bindField('jg-nombre','nombre');
   bindField('jg-cargo','cargo');
   bindField('jg-rut','rut');
+  bindField('jg-nacionalidad','nacionalidad');
   bindField('jg-fecha','fechaNac');
   bindField('jg-estado','estado', null, 'Estado de jugador cambiado');
 
@@ -2020,7 +2031,7 @@ function renderJugadoresBody(){
     var dorsal = Number(addForm.dorsal.value) || 0;
     var cargo = addForm.cargo.value;
     function crear(){
-      STATE.jugadores.push({ id: uid('pl'), teamId: JUGADORES_SELECTED_TEAM, dorsal: dorsal, nombre: nombre, cargo: cargo, rut:'', fechaNac:'', estado:'Activo' });
+      STATE.jugadores.push({ id: uid('pl'), teamId: JUGADORES_SELECTED_TEAM, dorsal: dorsal, nombre: nombre, cargo: cargo, rut:'', nacionalidad:'', fechaNac:'', estado:'Activo' });
       logActivity('Jugador agregado a la nómina', nombre + ' #' + dorsal + ' (' + (equipo?equipo.nombre:'—') + ')');
       renderAll();
       toast('Jugador agregado.');
@@ -2423,7 +2434,7 @@ function fillPrintArea(){
   function filaPos(s){ return '<tr><td>'+s.pos+'</td><td>'+escapeHtml(s.nombre)+'</td><td>'+s.pj+'</td><td>'+s.pts+'</td><td>'+s.dif+'</td></tr>'; }
 
   document.getElementById('printArea').innerHTML =
-    '<h1>Circular — Campeonato Estrellas de Barrio 2026</h1>' +
+    '<h1>Circular — Liga de Fútbol Estrellas de Barrio 2026</h1>' +
     '<div class="sub">Jornada: ' + escapeHtml(jornada) + ' · Generada el ' + new Date().toLocaleDateString('es-CL') + '</div>' +
     '<div class="summary-grid">' +
       '<div class="summary-item"><b>' + partidos.filter(function(p){return p.golesLocal!==null;}).length + '/' + partidos.length + '</b> partidos jugados</div>' +
@@ -2622,6 +2633,422 @@ function initIO(){
 
 
 /* ---- main_firebase.js ---- */
+/* ---- ui_nomina.js ---- */
+/* ============================================================================
+   IMPORTAR NOMINA DE JUGADORES DESDE EL FORMATO OFICIAL (.xlsx)
+
+   Lee el archivo "Nómina de jugadores LEB 2026" que entregan los clubes y carga
+   sus jugadores en el Listado de Jugadores del equipo correspondiente.
+
+   Sin librerías externas: un .xlsx es un ZIP con XML dentro, así que se abre el
+   ZIP a mano y se descomprime con DecompressionStream, que traen los navegadores
+   actuales. Si el navegador no lo soporta, se avisa y se ofrece la vía CSV.
+
+   Del formato se leen: nombre del club, delegados y sus contactos, correo,
+   director técnico, categoría y hasta 25 jugadores (nombres, apellidos, RUT,
+   nacionalidad y fecha de nacimiento). El N° de la planilla es solo el orden de
+   inscripción, NO el dorsal de la camiseta: los jugadores se cargan sin dorsal y
+   el número de camiseta se asigna en la Planilla de Juego de cada partido.
+   ============================================================================ */
+
+var NOMINA_MAX = 25;
+
+/* Textos de ayuda del formato en blanco: si vienen así, es que no se llenaron. */
+var NOMINA_PLACEHOLDERS = [
+  'nombres y apellidos', 'n° contacto', 'no contacto', 'nombre club',
+  'aqui se enviara la informacion de cada fecha', '(mujeres / hombres)',
+  'mujeres / hombres', 'sub', 'rut', 'nacionalidad', 'fecha nacimiento'
+];
+
+function normTexto(s){
+  return (s == null ? '' : String(s)).trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+function esPlaceholder(s){
+  var n = normTexto(s);
+  return !n || NOMINA_PLACEHOLDERS.indexOf(n) !== -1;
+}
+
+/* --- ZIP mínimo: ubica las entradas y las descomprime ---------------------- */
+async function zipEntradas(arrayBuffer){
+  var dv = new DataView(arrayBuffer);
+  var bytes = new Uint8Array(arrayBuffer);
+  var i, eocd = -1;
+  for (i = bytes.length - 22; i >= 0 && i > bytes.length - 66000; i--){
+    if (dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('El archivo no parece un .xlsx válido (no se encontró el índice del ZIP).');
+
+  var total = dv.getUint16(eocd + 10, true);
+  var inicio = dv.getUint32(eocd + 16, true);
+  var entradas = {};
+  var p = inicio;
+  for (i = 0; i < total; i++){
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    var metodo = dv.getUint16(p + 10, true);
+    var compSize = dv.getUint32(p + 20, true);
+    var largoNombre = dv.getUint16(p + 28, true);
+    var largoExtra = dv.getUint16(p + 30, true);
+    var largoCom = dv.getUint16(p + 32, true);
+    var offsetLocal = dv.getUint32(p + 42, true);
+    var nombre = new TextDecoder('utf-8').decode(bytes.subarray(p + 46, p + 46 + largoNombre));
+    entradas[nombre] = { metodo: metodo, compSize: compSize, offsetLocal: offsetLocal };
+    p += 46 + largoNombre + largoExtra + largoCom;
+  }
+  return { dv: dv, bytes: bytes, entradas: entradas };
+}
+
+async function zipLeerTexto(zip, nombre){
+  var e = zip.entradas[nombre];
+  if (!e) return null;
+  var dv = zip.dv;
+  var largoNombre = dv.getUint16(e.offsetLocal + 26, true);
+  var largoExtra = dv.getUint16(e.offsetLocal + 28, true);
+  var datos = e.offsetLocal + 30 + largoNombre + largoExtra;
+  var trozo = zip.bytes.subarray(datos, datos + e.compSize);
+  if (e.metodo === 0) return new TextDecoder('utf-8').decode(trozo);
+  if (e.metodo !== 8) throw new Error('El .xlsx usa una compresión no soportada (método ' + e.metodo + ').');
+  if (typeof DecompressionStream === 'undefined'){
+    throw new Error('Este navegador no puede descomprimir el archivo. Actualícelo o guarde la nómina como CSV.');
+  }
+  var ds = new DecompressionStream('deflate-raw');
+  var w = ds.writable.getWriter();
+  w.write(trozo); w.close();
+  var buf = await new Response(ds.readable).arrayBuffer();
+  return new TextDecoder('utf-8').decode(buf);
+}
+
+/* --- Hoja de cálculo -> mapa de celdas { fila: { columna: texto } } -------- */
+function xlsxCeldas(xmlHoja, cadenas){
+  var doc = new DOMParser().parseFromString(xmlHoja, 'application/xml');
+  var filas = {};
+  var celdas = doc.getElementsByTagName('c');
+  for (var i = 0; i < celdas.length; i++){
+    var c = celdas[i];
+    var ref = c.getAttribute('r') || '';
+    var m = /^([A-Z]+)(\d+)$/.exec(ref);
+    if (!m) continue;
+    var col = m[1], fila = parseInt(m[2], 10);
+    var tipo = c.getAttribute('t');
+    var valor = '';
+    if (tipo === 'inlineStr'){
+      var is = c.getElementsByTagName('t');
+      for (var k = 0; k < is.length; k++) valor += is[k].textContent;
+    } else {
+      var v = c.getElementsByTagName('v')[0];
+      if (!v) continue;
+      valor = v.textContent;
+      if (tipo === 's') valor = cadenas[parseInt(valor, 10)] || '';
+    }
+    valor = String(valor).trim();
+    if (!valor) continue;
+    if (!filas[fila]) filas[fila] = {};
+    filas[fila][col] = valor;
+  }
+  return filas;
+}
+
+function xlsxCadenas(xmlCadenas){
+  if (!xmlCadenas) return [];
+  var doc = new DOMParser().parseFromString(xmlCadenas, 'application/xml');
+  var sis = doc.getElementsByTagName('si');
+  var out = [];
+  for (var i = 0; i < sis.length; i++){
+    var ts = sis[i].getElementsByTagName('t');
+    var s = '';
+    for (var k = 0; k < ts.length; k++){
+      if (ts[k].parentNode.nodeName === 'rPh') continue;  // lecturas fonéticas
+      s += ts[k].textContent;
+    }
+    out.push(s);
+  }
+  return out;
+}
+
+/* Excel guarda las fechas como número de días desde el 30-12-1899. */
+function fechaDesdeExcel(valor){
+  var txt = String(valor).trim();
+  if (/^\d+(\.\d+)?$/.test(txt)){
+    var n = parseFloat(txt);
+    if (n > 20 && n < 80000){
+      var base = Date.UTC(1899, 11, 30) + Math.floor(n) * 86400000;
+      return new Date(base).toISOString().slice(0, 10);
+    }
+    return '';
+  }
+  var m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/.exec(txt);
+  if (m){
+    var dia = m[1].padStart(2, '0'), mes = m[2].padStart(2, '0'), anio = m[3];
+    if (anio.length === 2) anio = (parseInt(anio, 10) > 30 ? '19' : '20') + anio;
+    return anio + '-' + mes + '-' + dia;
+  }
+  m = /^(\d{4})-(\d{2})-(\d{2})/.exec(txt);
+  return m ? m[0] : '';
+}
+
+/* --- Lectura del formato oficial ------------------------------------------- */
+function colsDeCabecera(fila){
+  var mapa = {};
+  Object.keys(fila).forEach(function(col){
+    var t = normTexto(fila[col]);
+    if (t === 'nombres' || t === 'nombre') mapa.nombres = col;
+    else if (t === 'apellido paterno') mapa.paterno = col;
+    else if (t === 'apellido materno') mapa.materno = col;
+    else if (t === 'rut') mapa.rut = col;
+    else if (t === 'nacionalidad') mapa.nacionalidad = col;
+    else if (t.indexOf('fecha') === 0) mapa.fechaNac = col;
+    else if (t === 'n°' || t === 'no' || t === 'n') mapa.numero = col;
+  });
+  return mapa;
+}
+
+function valorALaDerecha(fila, colDesde, cols){
+  var idx = cols.indexOf(colDesde);
+  for (var i = idx + 1; i < cols.length; i++){
+    var v = fila[cols[i]];
+    if (v && !esPlaceholder(v)) return v.trim();
+    if (v && normTexto(v).indexOf('contacto') !== -1) break;  // empieza otro campo
+  }
+  return '';
+}
+
+function buscarEtiqueta(filas, etiqueta, hasta){
+  var norm = normTexto(etiqueta);
+  var nums = Object.keys(filas).map(Number).sort(function(a,b){ return a-b; });
+  for (var i = 0; i < nums.length; i++){
+    if (hasta && nums[i] >= hasta) break;
+    var fila = filas[nums[i]];
+    var cols = Object.keys(fila).sort();
+    for (var k = 0; k < cols.length; k++){
+      if (normTexto(fila[cols[k]]) === norm) return { fila: fila, cols: cols, col: cols[k] };
+    }
+  }
+  return null;
+}
+function leerCampo(filas, etiqueta, hasta){
+  var h = buscarEtiqueta(filas, etiqueta, hasta);
+  return h ? valorALaDerecha(h.fila, h.col, h.cols) : '';
+}
+function leerContacto(filas, etiqueta, hasta){
+  var h = buscarEtiqueta(filas, etiqueta, hasta);
+  if (!h) return '';
+  for (var i = h.cols.indexOf(h.col) + 1; i < h.cols.length; i++){
+    if (normTexto(h.fila[h.cols[i]]).indexOf('contacto') !== -1){
+      return valorALaDerecha(h.fila, h.cols[i], h.cols);
+    }
+  }
+  return '';
+}
+
+async function leerNominaXlsx(file){
+  var zip = await zipEntradas(await file.arrayBuffer());
+  var cadenas = xlsxCadenas(await zipLeerTexto(zip, 'xl/sharedStrings.xml'));
+
+  /* Primera hoja del libro: se toma la de menor número de archivo. */
+  var hojas = Object.keys(zip.entradas).filter(function(n){ return /^xl\/worksheets\/sheet\d+\.xml$/.test(n); }).sort();
+  if (!hojas.length) throw new Error('El archivo no contiene hojas de cálculo.');
+  var filas = xlsxCeldas(await zipLeerTexto(zip, hojas[0]), cadenas);
+
+  /* Fila de encabezados del listado */
+  var nums = Object.keys(filas).map(Number).sort(function(a,b){ return a-b; });
+  var filaCab = 0, cols = null;
+  for (var i = 0; i < nums.length; i++){
+    var c = colsDeCabecera(filas[nums[i]]);
+    if (c.nombres && (c.paterno || c.rut)){ filaCab = nums[i]; cols = c; break; }
+  }
+  if (!cols) throw new Error('No se encontró el listado de jugadores. Use el formato oficial de nómina sin cambiar los encabezados.');
+
+  var jugadores = [], vacias = 0;
+  for (var f = filaCab + 1; f <= filaCab + 200; f++){
+    var fila = filas[f];
+    if (!fila){ if (++vacias > 12) break; continue; }
+    var partes = [fila[cols.nombres], cols.paterno && fila[cols.paterno], cols.materno && fila[cols.materno]]
+      .filter(function(x){ return x && !esPlaceholder(x); })
+      .map(function(x){ return String(x).trim(); });
+    if (!partes.length){ if (++vacias > 12) break; continue; }
+    vacias = 0;
+    jugadores.push({
+      nombre: partes.join(' ').replace(/\s+/g, ' '),
+      rut: (cols.rut && fila[cols.rut] && !esPlaceholder(fila[cols.rut])) ? String(fila[cols.rut]).trim() : '',
+      nacionalidad: (cols.nacionalidad && fila[cols.nacionalidad] && !esPlaceholder(fila[cols.nacionalidad])) ? String(fila[cols.nacionalidad]).trim() : '',
+      fechaNac: cols.fechaNac && fila[cols.fechaNac] ? fechaDesdeExcel(fila[cols.fechaNac]) : ''
+    });
+  }
+
+  return {
+    club: leerCampo(filas, 'nombre club', filaCab),
+    delegado1: leerCampo(filas, 'delegado 1', filaCab),
+    contacto1: leerContacto(filas, 'delegado 1', filaCab),
+    delegado2: leerCampo(filas, 'delegado 2', filaCab),
+    contacto2: leerContacto(filas, 'delegado 2', filaCab),
+    correo: leerCampo(filas, 'correo electronico', filaCab),
+    dt: leerCampo(filas, 'director tecnico', filaCab),
+    contactoDt: leerContacto(filas, 'director tecnico', filaCab),
+    categoria: leerCampo(filas, 'categoria', filaCab),
+    jugadores: jugadores
+  };
+}
+
+/* --- Emparejar el club del archivo con un equipo de la plataforma ---------- */
+function equipoPorNombre(nombreClub){
+  var n = normTexto(nombreClub);
+  if (!n) return null;
+  var exacto = STATE.equipos.filter(function(e){ return normTexto(e.nombre) === n; })[0];
+  if (exacto) return exacto;
+  var contiene = STATE.equipos.filter(function(e){
+    var en = normTexto(e.nombre);
+    return en && (en.indexOf(n) !== -1 || n.indexOf(en) !== -1);
+  });
+  if (contiene.length === 1) return contiene[0];
+  /* Coincidencia por palabras significativas (ignora club, deportivo, etc.) */
+  var ignorar = ['club','deportivo','deportes','cd','fc','de','del','la','las','los','el','union','unión'];
+  var palabras = n.split(' ').filter(function(w){ return w.length > 2 && ignorar.indexOf(w) === -1; });
+  var mejor = null, mejorPuntaje = 0;
+  STATE.equipos.forEach(function(e){
+    var en = normTexto(e.nombre);
+    var puntaje = palabras.filter(function(w){ return en.indexOf(w) !== -1; }).length;
+    if (puntaje > mejorPuntaje){ mejorPuntaje = puntaje; mejor = e; }
+  });
+  return mejorPuntaje > 0 ? mejor : null;
+}
+
+/* --- Flujo de importación -------------------------------------------------- */
+function abrirImportarNomina(){
+  var input = document.getElementById('fileNomina');
+  if (input){ input.value = ''; input.click(); }
+}
+
+async function procesarArchivoNomina(file){
+  if (!file) return;
+  if (!/\.xlsx$/i.test(file.name)){
+    alertModal('Formato no reconocido',
+      '<p>Se espera el formato oficial de nómina en Excel (<strong>.xlsx</strong>). ' +
+      'Si el club le envió un .xls o un PDF, ábralo y guárdelo como .xlsx antes de importar.</p>');
+    return;
+  }
+  var datos;
+  try {
+    datos = await leerNominaXlsx(file);
+  } catch (err) {
+    alertModal('No se pudo leer la nómina', '<p>' + escapeHtml(err && err.message ? err.message : String(err)) + '</p>');
+    return;
+  }
+  if (!datos.jugadores.length){
+    alertModal('Nómina vacía',
+      '<p>El archivo se leyó bien, pero no tiene jugadores escritos en el listado. ' +
+      'Revise que el club haya completado los nombres y vuelva a intentarlo.</p>');
+    return;
+  }
+  mostrarModalNomina(datos, file.name);
+}
+
+function mostrarModalNomina(datos, nombreArchivo){
+  var sugerido = equipoPorNombre(datos.club) || getEquipo(STATE, JUGADORES_SELECTED_TEAM);
+  var opciones = ['A','B'].map(function(g){
+    return '<optgroup label="Grupo ' + g + '">' + STATE.equipos.filter(function(e){ return e.grupo === g; }).map(function(e){
+      return '<option value="' + e.id + '"' + (sugerido && e.id === sugerido.id ? ' selected' : '') + '>' + escapeHtml(e.nombre) + '</option>';
+    }).join('') + '</optgroup>';
+  }).join('');
+
+  var muestra = datos.jugadores.slice(0, 6).map(function(j, i){
+    return '<tr><td>' + (i+1) + '</td><td>' + escapeHtml(j.nombre) + '</td><td>' + escapeHtml(j.rut || '—') +
+      '</td><td>' + escapeHtml(j.nacionalidad || '—') + '</td><td>' + (j.fechaNac ? fmtDateEs(j.fechaNac) : '—') + '</td></tr>';
+  }).join('');
+
+  var avisos = [];
+  if (!datos.club) avisos.push('El archivo no trae el nombre del club: verifique a qué equipo lo está cargando.');
+  else if (!equipoPorNombre(datos.club)) avisos.push('El club del archivo ("' + escapeHtml(datos.club) + '") no coincide con ningún equipo: elíjalo a mano.');
+  if (datos.jugadores.length > NOMINA_MAX) avisos.push('La nómina trae ' + datos.jugadores.length + ' jugadores y las bases permiten ' + NOMINA_MAX + ': se cargarán los primeros ' + NOMINA_MAX + '.');
+  var sinRut = datos.jugadores.filter(function(j){ return !j.rut; }).length;
+  if (sinRut) avisos.push(sinRut + ' jugador(es) vienen sin RUT.');
+  var sinFecha = datos.jugadores.filter(function(j){ return !j.fechaNac; }).length;
+  if (sinFecha) avisos.push(sinFecha + ' jugador(es) vienen sin fecha de nacimiento.');
+
+  var hayContacto = datos.delegado1 || datos.correo || datos.contacto1;
+  var body =
+    '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Archivo: <strong>' + escapeHtml(nombreArchivo) + '</strong> — ' +
+      datos.jugadores.length + ' jugador(es) leídos' + (datos.club ? ', club declarado: <strong>' + escapeHtml(datos.club) + '</strong>' : '') + '.</p>' +
+    '<div class="field"><label>Cargar en el equipo</label><select name="equipo" style="width:100%;">' + opciones + '</select></div>' +
+    '<div class="field" style="margin-top:10px;"><label>Si el equipo ya tiene jugadores</label><select name="modo" style="width:100%;">' +
+      '<option value="reemplazar">Reemplazar la nómina actual</option>' +
+      '<option value="agregar">Agregar a la nómina actual</option>' +
+    '</select></div>' +
+    (hayContacto && esAdmin() ?
+      '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:12.5px;">' +
+      '<input type="checkbox" name="contactos" checked style="margin-top:2px;">' +
+      '<span>Actualizar también los datos de contacto del equipo en la pestaña Equipos' +
+      (datos.delegado1 ? '<br><span class="muted">Delegado: ' + escapeHtml(datos.delegado1) + (datos.contacto1 ? ' · ' + escapeHtml(datos.contacto1) : '') + '</span>' : '') +
+      (datos.correo ? '<br><span class="muted">Correo: ' + escapeHtml(datos.correo) + '</span>' : '') +
+      '</span></label>' : '') +
+    (avisos.length ? '<div style="margin-top:12px;padding:9px 11px;border-radius:8px;background:var(--gold-soft);color:var(--gold-dark);font-size:12px;">' +
+      avisos.map(function(a){ return '• ' + a; }).join('<br>') + '</div>' : '') +
+    '<div class="tbl-wrap" style="margin-top:12px;"><table class="tbl"><thead><tr>' +
+      '<th>N°</th><th>Nombre</th><th>RUT</th><th>Nacionalidad</th><th>Fecha Nac.</th>' +
+      '</tr></thead><tbody>' + muestra +
+      (datos.jugadores.length > 6 ? '<tr><td colspan="5" class="muted" style="font-size:11.5px;">… y ' + (datos.jugadores.length - 6) + ' más</td></tr>' : '') +
+      '</tbody></table></div>' +
+    '<p class="muted" style="font-size:11.5px;margin:10px 0 0;">El N° de la planilla es el orden de inscripción, no el dorsal: ' +
+      'los jugadores se cargan sin número de camiseta y el dorsal se asigna en la Planilla de Juego de cada partido.</p>';
+
+  formModal({
+    title: 'Importar nómina de jugadores',
+    okText: 'Importar',
+    bodyHtml: body,
+    onOk: function(form){
+      var equipo = getEquipo(STATE, form.equipo.value);
+      if (!equipo){ toast('Elija un equipo.', true); return false; }
+      var reemplazar = form.modo.value === 'reemplazar';
+      var nuevos = datos.jugadores.slice(0, NOMINA_MAX);
+
+      if (reemplazar){
+        var quitados = STATE.jugadores.filter(function(j){ return j.teamId === equipo.id; }).map(function(j){ return j.id; });
+        STATE.jugadores = STATE.jugadores.filter(function(j){ return j.teamId !== equipo.id; });
+        /* Los jugadores reemplazados salen también de las planillas guardadas */
+        Object.keys(STATE.planillas || {}).forEach(function(mid){
+          var pl = STATE.planillas[mid] || {};
+          ['local','visita'].forEach(function(lado){
+            if (!pl[lado]) return;
+            quitados.forEach(function(id){ delete pl[lado][id]; });
+          });
+        });
+      }
+      var existentes = STATE.jugadores.filter(function(j){ return j.teamId === equipo.id; }).length;
+      nuevos.forEach(function(j){
+        STATE.jugadores.push({
+          id: uid('pl'), teamId: equipo.id, dorsal: 0, nombre: j.nombre, cargo: 'Jugador',
+          rut: j.rut, nacionalidad: j.nacionalidad, fechaNac: j.fechaNac, estado: 'Activo'
+        });
+      });
+
+      if (form.contactos && form.contactos.checked && esAdmin()){
+        if (datos.delegado1) equipo.delegado = datos.delegado1;
+        if (datos.contacto1) equipo.celular = datos.contacto1;
+        if (datos.correo) equipo.correo = datos.correo;
+      }
+
+      logActivity('Nómina importada', equipo.nombre + ': ' + nuevos.length + ' jugador(es)' +
+        (reemplazar ? ' (reemplazó la nómina anterior)' : ' (agregados)') + ' desde ' + nombreArchivo);
+
+      JUGADORES_SELECTED_TEAM = equipo.id;
+      renderAll();
+      switchTab('jugadores');
+      var total = existentes + nuevos.length;
+      toast('Nómina de ' + equipo.nombre + ' cargada: ' + nuevos.length + ' jugador(es).' +
+        (total > NOMINA_MAX ? ' Atención: el equipo queda con ' + total + ', sobre el máximo de ' + NOMINA_MAX + '.' : ''));
+    }
+  });
+}
+
+function initImportarNomina(){
+  var input = document.getElementById('fileNomina');
+  if (input) input.addEventListener('change', function(){
+    var f = input.files && input.files[0];
+    procesarArchivoNomina(f);
+  });
+}
+
+
 /* ---- ui_usuarios.js ---- */
 /* ============================================================================
    USUARIOS, CLAVE DE ACCESO Y PERMISOS
@@ -3116,6 +3543,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   initMenuMovil();
   initIO();
   initSesionUI();
+  initImportarNomina();
   setSaveStatus('sinLinea');
   mostrarLogin('');  // la plataforma queda bloqueada hasta que alguien ingrese
 
