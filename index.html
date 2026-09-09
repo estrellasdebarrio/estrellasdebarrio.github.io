@@ -326,6 +326,7 @@
         <button class="btn btn-ghost btn-xs needs-write" id="btnImport">📂 Importar datos</button>
         <input type="file" id="fileImport" accept="application/json" class="hidden">
         <input type="file" id="fileNomina" accept=".xlsx" class="hidden">
+        <input type="file" id="fileCausales" accept=".xlsx,.csv" class="hidden">
         <button class="btn btn-primary btn-xs" id="btnExport">📄 Ver / copiar mis datos</button>
         <button class="btn btn-ghost btn-xs" id="btnSalir">🚪 Salir</button>
       </div>
@@ -1001,8 +1002,8 @@ function formModal(opts){
   var formEl = wrap.querySelector('#__genForm');
   wrap.addEventListener('click', function(e){
     var act = e.target.getAttribute && e.target.getAttribute('data-act');
-    if (e.target === wrap){ wrap.remove(); return; }
-    if (act === 'cancel'){ wrap.remove(); }
+    if (e.target === wrap){ wrap.remove(); if (opts.onCancel) opts.onCancel(); return; }
+    if (act === 'cancel'){ wrap.remove(); if (opts.onCancel) opts.onCancel(); }
     if (act === 'ok'){
       var ok = opts.onOk(formEl, wrap);
       if (ok !== false) wrap.remove();
@@ -1634,28 +1635,37 @@ function renderSancionesTabla(){
   var jornadaOpts = jornadasDisponibles();
   var rows = STATE.sanciones.slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); }).map(function(s){
     var equipo = getEquipo(STATE, s.teamId);
+    /* Cada valor es editable en la propia fila; el lápiz abre el resto del
+       registro (club, cargo, causal y detalle), que necesita desplegables. */
     return '<tr data-id="' + s.id + '">' +
-      '<td>' + fmtDateEs(s.fecha) + '</td>' +
+      '<td><input class="txt-input sanc-fecha" type="date" data-id="' + s.id + '" value="' + escapeHtml(s.fecha||'') + '"></td>' +
       '<td>' + (equipo ? teamLogoHtml(equipo) + ' ' + escapeHtml(equipo.nombre) : '—') + '</td>' +
-      '<td>' + escapeHtml(s.persona) + '<div class="muted" style="font-size:11px;">' + escapeHtml(s.cargo) + '</div></td>' +
+      '<td><input class="txt-input sanc-persona" data-id="' + s.id + '" value="' + escapeHtml(s.persona||'') + '" style="min-width:150px;">' +
+        '<div class="muted" style="font-size:11px;">' + escapeHtml(s.cargo) + '</div></td>' +
       '<td>' + escapeHtml(s.causal) + '<div class="muted" style="font-size:11px;">' + escapeHtml(s.detalle) + '</div></td>' +
-      '<td>' + fmtMoney(s.multa) + '</td>' +
-      '<td>' + (s.partidos || 0) + '</td>' +
+      '<td><input class="txt-input sanc-multa" type="number" min="0" step="1000" data-id="' + s.id + '" value="' + (s.multa||0) + '" style="width:100px;"></td>' +
+      '<td><select class="sanc-susp" data-id="' + s.id + '">' + suspensionOpcionesHtml(s.partidos) + '</select></td>' +
       '<td><select class="jornada-sel" data-id="' + s.id + '"><option value="">—</option>' +
         jornadaOpts.map(function(j){ return '<option'+(s.jornada===j?' selected':'')+'>'+escapeHtml(j)+'</option>'; }).join('') + '</select></td>' +
       '<td><select class="pagada-sel" data-id="' + s.id + '"><option' + (s.pagada==='No'?' selected':'') + '>No</option><option' + (s.pagada==='Sí'?' selected':'') + '>Sí</option></select></td>' +
-      '<td class="muted" style="font-size:11.5px;">' + escapeHtml(s.observaciones||'') + (s.origenActa ? ' <span class="pill pill-muted">desde Acta</span>' : '') + '</td>' +
-      '<td><button class="btn btn-ghost btn-xs del-sancion" data-id="' + s.id + '">🗑️</button></td>' +
+      '<td><input class="txt-input sanc-obs" data-id="' + s.id + '" value="' + escapeHtml(s.observaciones||'') + '" style="min-width:140px;">' +
+        (s.origenActa ? '<div><span class="pill pill-muted">desde Acta</span></div>' : '') + '</td>' +
+      '<td style="white-space:nowrap;">' +
+        '<button class="btn btn-ghost btn-xs edit-sancion" data-id="' + s.id + '">✏️</button> ' +
+        '<button class="btn btn-ghost btn-xs del-sancion" data-id="' + s.id + '">🗑️</button></td>' +
     '</tr>';
   }).join('');
-  return '<div class="card"><h3>Registro de sanciones</h3><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-    '<th>Fecha</th><th>Club</th><th>Persona</th><th>Causal / Detalle</th><th>Multa</th><th>Part. susp.</th><th>Jornada</th><th>Pagada</th><th>Obs.</th><th></th>' +
+  return '<div class="card"><h3>Registro de sanciones</h3>' +
+    '<p class="desc">Todos los valores se editan aquí mismo: fecha, persona, multa, fechas de suspensión, jornada, ' +
+    'pago y observaciones. El lápiz abre el club, el cargo y la causal. Cada cambio queda en el Historial de Actividad.</p>' +
+    '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+    '<th>Fecha</th><th>Club</th><th>Persona</th><th>Causal / Detalle</th><th>Multa $</th><th>Sanción</th><th>Jornada</th><th>Pagada</th><th>Obs.</th><th></th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 }
 
 function renderSanciones(){
   var panel = document.getElementById('panel-sanciones');
-  panel.innerHTML = renderSancionesForm() + renderSancionesTabla();
+  panel.innerHTML = renderCausalesCard() + renderSancionesForm() + renderSancionesTabla();
 
   var form = document.getElementById('sancionForm');
   var selJugador = form.jugadorId, selCargo = form.cargo, selTeam = form.teamId, selCausal = form.causal, selDetalle = form.detalle;
@@ -1714,6 +1724,114 @@ function renderSanciones(){
     renderAll();
     toast('Sanción registrada.');
   });
+
+  /* Edición directa de los valores de cada sanción */
+  function sancionPorId(id){ return STATE.sanciones.find(function(x){ return x.id === id; }); }
+
+  function bindSancion(cls, prop, transformar, etiqueta, formatear){
+    panel.querySelectorAll('.' + cls).forEach(function(inp){
+      inp.addEventListener('change', function(){
+        var s = sancionPorId(inp.dataset.id);
+        if (!s) return;
+        var antes = s[prop];
+        var valor = transformar ? transformar(inp.value) : inp.value.trim();
+        if (antes === valor){ return; }
+        s[prop] = valor;
+        var muestra = formatear || function(v){ return v === '' || v === null ? '—' : v; };
+        logActivity(etiqueta, s.persona + ': ' + muestra(antes) + ' → ' + muestra(valor));
+        renderAll();
+      });
+    });
+  }
+  bindSancion('sanc-fecha', 'fecha', null, 'Fecha de sanción editada', function(v){ return v ? fmtDateEs(v) : '—'; });
+  bindSancion('sanc-persona', 'persona', null, 'Persona sancionada editada');
+  bindSancion('sanc-multa', 'multa', function(v){ return Math.max(0, Number(v) || 0); }, 'Multa editada', fmtMoney);
+  bindSancion('sanc-obs', 'observaciones', null, 'Observación de sanción editada');
+
+  panel.querySelectorAll('.sanc-susp').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var s = sancionPorId(sel.dataset.id);
+      if (!s) return;
+      function aplicar(n){
+        var antes = s.partidos || 0;
+        if (antes === n){ renderAll(); return; }
+        s.partidos = n;
+        logActivity('Fechas de suspensión editadas', s.persona + ': ' + etiquetaSuspension(antes) + ' → ' + etiquetaSuspension(n));
+        renderAll();
+      }
+      if (sel.value === 'otro'){
+        pedirSuspensionLibre(s.partidos, aplicar, function(){ renderAll(); });
+      } else {
+        aplicar(Number(sel.value) || 0);
+      }
+    });
+  });
+
+  panel.querySelectorAll('.edit-sancion').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var s = sancionPorId(btn.dataset.id);
+      if (!s) return;
+      var equiposOpts2 = STATE.equipos.map(function(e){
+        return '<option value="' + e.id + '"' + (e.id === s.teamId ? ' selected' : '') + '>' + escapeHtml(e.nombre) + '</option>';
+      }).join('');
+      var cargosOpts = ['Jugador','Cuerpo técnico','Persona delegada','Barra'].map(function(c){
+        return '<option' + (c === s.cargo ? ' selected' : '') + '>' + c + '</option>';
+      }).join('');
+      var causalesOpts = STATE.causales.map(function(c){
+        return '<option value="' + escapeHtml(c.causal) + '"' + (c.causal === s.causal ? ' selected' : '') + '>' + escapeHtml(c.causal) + '</option>';
+      }).join('');
+      formModal({
+        title: 'Editar sanción',
+        okText: 'Guardar',
+        bodyHtml:
+          '<div class="grid-2">' +
+            '<div class="field"><label>Club</label><select name="teamId">' + equiposOpts2 + '</select></div>' +
+            '<div class="field"><label>Cargo</label><select name="cargo">' + cargosOpts + '</select></div>' +
+          '</div>' +
+          '<div class="field" style="margin-top:10px;"><label>Causal</label><select name="causal" style="width:100%;">' +
+            '<option value="">— sin causal —</option>' + causalesOpts + '</select></div>' +
+          '<div class="field" style="margin-top:10px;"><label>Detalle</label>' +
+            '<select name="detalleSel" style="width:100%;"></select></div>' +
+          '<div class="field" style="margin-top:10px;"><label>Detalle escrito a mano (si no está en la tabla)</label>' +
+            '<input class="txt-input" name="detalleLibre" style="width:100%;" placeholder="Deje vacío para usar el detalle de la lista"></div>' +
+          '<p class="muted" style="font-size:11.5px;margin:10px 0 0;">Al cambiar el detalle se sugieren la multa y las ' +
+          'fechas de suspensión de la tabla de causales, que igual puede ajustar a mano en la fila.</p>',
+        onMount: function(form){
+          function llenarDetalles(){
+            var detalles = causalDetalles(form.causal.value);
+            form.detalleSel.innerHTML = '<option value="">— sin detalle —</option>' + detalles.map(function(d){
+              return '<option value="' + escapeHtml(d.detalle) + '"' + (d.detalle === s.detalle ? ' selected' : '') + '>' +
+                escapeHtml(d.detalle) + ' (' + fmtMoney(d.multa) + (d.partidos ? ' · ' + etiquetaSuspension(d.partidos) : '') + ')</option>';
+            }).join('');
+          }
+          llenarDetalles();
+          form.causal.addEventListener('change', llenarDetalles);
+        },
+        onOk: function(form){
+          var antes = s.causal + ' / ' + s.detalle;
+          s.teamId = form.teamId.value;
+          s.cargo = form.cargo.value;
+          s.causal = form.causal.value;
+          var libre = form.detalleLibre.value.trim();
+          var nuevoDetalle = libre || form.detalleSel.value;
+          var cambioDetalle = nuevoDetalle !== s.detalle;
+          s.detalle = nuevoDetalle;
+          if (cambioDetalle && !libre){
+            var d = findDetalle(s.causal, nuevoDetalle);
+            if (d){ s.multa = d.multa; s.partidos = d.partidos; }
+          }
+          logActivity('Sanción editada', s.persona + ': ' + antes + ' → ' + s.causal + ' / ' + s.detalle);
+          renderAll();
+          toast('Sanción actualizada.');
+        }
+      });
+    });
+  });
+
+  var btnFmtCausales = document.getElementById('btnFormatoCausales');
+  if (btnFmtCausales) btnFmtCausales.addEventListener('click', descargarFormatoCausales);
+  var btnImpCausales = document.getElementById('btnImportCausales');
+  if (btnImpCausales) btnImpCausales.addEventListener('click', abrirImportarCausales);
 
   panel.querySelectorAll('.pagada-sel').forEach(function(sel){
     sel.addEventListener('change', function(){
@@ -2188,7 +2306,7 @@ function renderActaBody(){
   var marcador = marcadorDesdeActa(STATE, p.id);
 
   function accionesFilas(){
-    if (!acta.acciones.length) return '<tr><td colspan="6" class="empty-hint">Sin acciones registradas.</td></tr>';
+    if (!acta.acciones.length) return '<tr><td colspan="7" class="empty-hint">Sin acciones registradas.</td></tr>';
     return acta.acciones.map(function(a){
       var j = getJugador(STATE, a.playerId);
       return '<tr>' +
@@ -2197,6 +2315,7 @@ function renderActaBody(){
         '<td>' + escapeHtml(j?j.nombre:'—') + '</td>' +
         '<td>' + (TIPO_LABELS[a.tipo]||a.tipo) + (a.detalle ? '<div class="muted" style="font-size:11px;">'+escapeHtml(a.detalle)+'</div>' : '') + '</td>' +
         '<td>' + (a.minuto!==null && a.minuto!=='' ? a.minuto + "'" : '—') + '</td>' +
+        '<td>' + (a.partidos ? '<span class="pill pill-red">' + etiquetaSuspension(a.partidos) + '</span>' : '—') + '</td>' +
         '<td><button class="btn btn-ghost btn-xs del-accion" data-id="'+a.id+'">🗑️</button></td>' +
       '</tr>';
     }).join('');
@@ -2212,7 +2331,7 @@ function renderActaBody(){
         '<div style="font-size:26px;font-weight:800;">' + marcador.local + ' <span class="muted" style="font-size:16px;">—</span> ' + marcador.visita + '</div>' +
         '<div class="row-flex">' +
           '<button class="btn btn-primary" id="aplicarResultadoBtn">✅ Aplicar resultado a Programación</button>' +
-          '<button class="btn btn-danger" id="enviarRojasBtn">🟥 Enviar tarjetas rojas a Sanciones</button>' +
+          '<button class="btn btn-danger" id="enviarRojasBtn">🟥 Enviar sanciones del acta</button>' +
         '</div>' +
       '</div>' +
       (acta.resultadoAplicado ? '<div class="muted" style="font-size:11.5px;margin-top:6px;">✔ Resultado ya aplicado a Programación (puede volver a aplicar si agrega más acciones).</div>' : '') +
@@ -2230,12 +2349,13 @@ function renderActaBody(){
           '<option value="gol">⚽ Gol</option><option value="autogol">🥅 Autogol</option><option value="falta">🚩 Falta</option>' +
           '<option value="amarilla">🟨 Amarilla</option><option value="roja">🟥 Roja</option>' +
         '</select></div>' +
-        '<div class="field hidden" id="causalWrap"><label>Causal / Detalle (opcional)</label><div class="row-flex">' + causalSelectHtml('acc') + '</div></div>' +
+        '<div class="field hidden" id="causalWrap"><label>Causal / Detalle</label><div class="row-flex">' + causalSelectHtml('acc') + '</div></div>' +
         '<div class="field"><label>Minuto</label><input class="txt-input" type="number" name="minuto" style="width:80px;" min="0" max="70"></div>' +
+        '<div class="field"><label>Sanción</label><select name="sancion" id="sancionSelect">' + suspensionOpcionesHtml(0) + '</select></div>' +
         '<button type="submit" class="btn btn-primary">➕ Agregar acción</button>' +
       '</form>' +
       '<div id="dobleAmarillaWarn"></div>' +
-      '<div class="tbl-wrap" style="margin-top:14px;"><table class="tbl"><thead><tr><th>Equipo</th><th>Dorsal</th><th>Jugador</th><th>Acción</th><th>Min.</th><th></th></tr></thead>' +
+      '<div class="tbl-wrap" style="margin-top:14px;"><table class="tbl"><thead><tr><th>Equipo</th><th>Dorsal</th><th>Jugador</th><th>Acción</th><th>Min.</th><th>Sanción</th><th></th></tr></thead>' +
       '<tbody>' + accionesFilas() + '</tbody></table></div>' +
     '</div>';
 
@@ -2263,9 +2383,29 @@ function renderActaBody(){
   form.lado.addEventListener('change', refreshDorsales);
   dorsalSelect.addEventListener('change', refreshNombre);
   tipoSelect.addEventListener('change', refreshTipoUI);
+  var sancionSelect = document.getElementById('sancionSelect');
+  var sancionLibre = 0;   // valor elegido con "Otra cantidad…"
+
+  function fijarSancion(n){
+    sancionLibre = n;
+    sancionSelect.innerHTML = suspensionOpcionesHtml(n);
+  }
+  sancionSelect.addEventListener('change', function(){
+    if (sancionSelect.value === 'otro'){
+      pedirSuspensionLibre(sancionLibre, fijarSancion, function(){ fijarSancion(sancionLibre); });
+    } else {
+      sancionLibre = Number(sancionSelect.value) || 0;
+    }
+  });
+
   accCausal.addEventListener('change', function(){
     var detalles = causalDetalles(accCausal.value);
     accDetalle.innerHTML = '<option value="">—</option>' + detalles.map(function(d){ return '<option value="'+escapeHtml(d.detalle)+'">'+escapeHtml(d.detalle)+'</option>'; }).join('');
+  });
+  /* Al elegir el detalle se propone la sanción de referencia de las bases */
+  accDetalle.addEventListener('change', function(){
+    var d = findDetalle(accCausal.value, accDetalle.value);
+    if (d) fijarSancion(d.partidos || 0);
   });
   refreshDorsales(); refreshTipoUI();
 
@@ -2277,6 +2417,7 @@ function renderActaBody(){
       id: uid('acc'), lado: form.lado.value, playerId: dorsalSelect.value, tipo: tipoSelect.value,
       minuto: form.minuto.value === '' ? null : Number(form.minuto.value),
       causal: accCausal.value || null, detalle: accDetalle.value || null, multa: d ? d.multa : 0,
+      partidos: sancionSelect.value === 'otro' ? sancionLibre : (Number(sancionSelect.value) || 0),
       enviadaSanciones: false
     };
     acta.acciones.push(nuevaAccion);
@@ -2317,8 +2458,12 @@ function renderActaBody(){
   });
 
   document.getElementById('enviarRojasBtn').addEventListener('click', function(){
-    var pendientes = acta.acciones.filter(function(a){ return a.tipo === 'roja' && !a.enviadaSanciones; });
-    if (!pendientes.length){ toast('No hay tarjetas rojas nuevas por enviar.'); return; }
+    /* Van a Sanciones las rojas y también cualquier otra acción con multa o
+       fechas de suspensión indicadas (por ejemplo una falta con sanción). */
+    var pendientes = acta.acciones.filter(function(a){
+      return !a.enviadaSanciones && (a.tipo === 'roja' || (a.partidos || 0) > 0 || (a.multa || 0) > 0);
+    });
+    if (!pendientes.length){ toast('No hay sanciones nuevas por enviar.'); return; }
     pendientes.forEach(function(a){
       var j = getJugador(STATE, a.playerId);
       STATE.sanciones.push({
@@ -2326,15 +2471,17 @@ function renderActaBody(){
         persona: j ? ('#' + j.dorsal + ' ' + j.nombre) : '—', cargo: 'Jugador',
         causal: a.causal || 'Tarjetas y disciplina en cancha',
         detalle: a.detalle || 'Expulsión registrada en Acta — definir causal exacta',
-        multa: a.multa || 0, partidos: 1, pagada: 'No',
+        multa: a.multa || 0,
+        partidos: (a.partidos || 0) > 0 ? a.partidos : (a.tipo === 'roja' ? 1 : 0),
+        pagada: 'No',
         observaciones: 'Enviada automáticamente desde el Acta del partido N°' + p.numero,
         origenActa: true, jornada: p.jornada
       });
       a.enviadaSanciones = true;
     });
-    logActivity('Tarjetas rojas enviadas a Sanciones', 'Partido N°' + p.numero + ' — ' + pendientes.length + ' tarjeta(s)');
+    logActivity('Sanciones del Acta enviadas', 'Partido N°' + p.numero + ' — ' + pendientes.length + ' registro(s)');
     renderAll();
-    toast(pendientes.length + ' tarjeta(s) roja(s) enviadas a Historial de Sanciones.');
+    toast(pendientes.length + ' sanción(es) enviadas a Historial de Sanciones.');
   });
 }
 
@@ -3049,6 +3196,290 @@ function initImportarNomina(){
 }
 
 
+/* ---- ui_suspension.js ---- */
+/* ============================================================================
+   SELECTOR DE FECHAS DE SUSPENSION
+   Se usa en el Acta de Partido (junto al minuto) y en el Historial de Sanciones
+   para editar la sanción de cada registro. Guarda un número de fechas; la
+   opción "Otra cantidad" abre un campo para casos excepcionales.
+   ============================================================================ */
+var SUSPENSION_OPCIONES = [0, 1, 2, 3, 4, 5];
+
+function etiquetaSuspension(n){
+  n = Number(n) || 0;
+  if (!n) return 'Sin suspensión';
+  return n + (n === 1 ? ' fecha' : ' fechas');
+}
+
+function suspensionOpcionesHtml(valorActual){
+  var v = Number(valorActual) || 0;
+  var opciones = SUSPENSION_OPCIONES.slice();
+  if (v > 0 && opciones.indexOf(v) === -1) opciones.push(v);
+  opciones.sort(function(a,b){ return a-b; });
+  return opciones.map(function(n){
+    return '<option value="' + n + '"' + (n === v ? ' selected' : '') + '>' + etiquetaSuspension(n) + '</option>';
+  }).join('') + '<option value="otro">Otra cantidad…</option>';
+}
+
+/* Pregunta un número de fechas cuando se elige "Otra cantidad…" */
+function pedirSuspensionLibre(valorActual, alConfirmar, alCancelar){
+  formModal({
+    title: 'Fechas de suspensión',
+    okText: 'Aplicar',
+    bodyHtml:
+      '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Indique cuántas fechas de suspensión ' +
+      'corresponden. Use 0 si la sanción es solo económica.</p>' +
+      '<div class="field"><label>Fechas</label><input class="txt-input" type="number" name="fechas" min="0" max="60" ' +
+      'style="width:120px;" value="' + (Number(valorActual) || 0) + '"></div>',
+    onOk: function(form){
+      var n = Number(form.fechas.value);
+      if (isNaN(n) || n < 0){ toast('Indique un número válido de fechas.', true); return false; }
+      alConfirmar(Math.round(n));
+    },
+    onCancel: alCancelar
+  });
+}
+
+/* ---- ui_causales.js ---- */
+/* ============================================================================
+   IMPORTAR LA TABLA DE CAUSALES (causal / detalle / multa / sanción)
+
+   Permite reemplazar o completar la tabla de referencia de las bases desde un
+   archivo Excel (.xlsx) o CSV, en vez de tenerla fija en el código. Esa tabla
+   alimenta los desplegables de Causal y Detalle en Historial de Sanciones y en
+   el Acta de Partido, y sugiere la multa y las fechas de suspensión.
+
+   Columnas esperadas (el orden no importa; se detectan por el encabezado):
+     CAUSAL | DETALLE | MULTA | SANCION (fechas de suspensión) | ARTICULO
+   "SANCION" acepta también los encabezados FECHAS, PARTIDOS o SUSPENSION.
+   Reutiliza el lector de .xlsx de ui_nomina.js.
+   ============================================================================ */
+
+function csvAFilas(texto){
+  /* Parser CSV tolerante: separador ; o , y comillas dobles. */
+  var t = texto.replace(/^\uFEFF/, '');
+  var sep = (t.split('\n')[0].split(';').length > t.split('\n')[0].split(',').length) ? ';' : ',';
+  var filas = [], campo = '', fila = [], enComillas = false;
+  for (var i = 0; i < t.length; i++){
+    var ch = t[i];
+    if (enComillas){
+      if (ch === '"'){
+        if (t[i+1] === '"'){ campo += '"'; i++; }
+        else enComillas = false;
+      } else campo += ch;
+    } else if (ch === '"'){ enComillas = true; }
+    else if (ch === sep){ fila.push(campo); campo = ''; }
+    else if (ch === '\n'){ fila.push(campo); filas.push(fila); fila = []; campo = ''; }
+    else if (ch !== '\r'){ campo += ch; }
+  }
+  if (campo !== '' || fila.length){ fila.push(campo); filas.push(fila); }
+  return filas.filter(function(f){ return f.some(function(c){ return String(c).trim() !== ''; }); });
+}
+
+function colsDeCausales(fila){
+  var mapa = {};
+  Object.keys(fila).forEach(function(col){
+    var t = normTexto(fila[col]);
+    if (t.indexOf('causal') === 0 || t === 'causa' || t === 'tipo de causa') mapa.causal = col;
+    else if (t.indexOf('detalle') === 0 || t === 'descripcion') mapa.detalle = col;
+    else if (t.indexOf('multa') === 0 || t === 'monto' || t === 'valor') mapa.multa = col;
+    else if (t.indexOf('sancion') === 0 || t.indexOf('fecha') === 0 || t.indexOf('partido') === 0 || t.indexOf('suspension') === 0) mapa.partidos = col;
+    else if (t.indexOf('articulo') === 0 || t === 'art' || t === 'art.') mapa.articulo = col;
+  });
+  return mapa;
+}
+
+function aNumero(v){
+  if (v == null) return 0;
+  var s = String(v).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.');
+  var n = parseFloat(s);
+  return isNaN(n) ? 0 : Math.round(n);
+}
+
+/* Convierte una lista de filas (arreglos de texto) en la estructura de causales */
+function armarCausales(filasArr){
+  /* Buscar la fila de encabezados */
+  var idxCab = -1, cols = null;
+  for (var i = 0; i < Math.min(filasArr.length, 30); i++){
+    var comoObj = {};
+    filasArr[i].forEach(function(v, k){ comoObj['C' + k] = v; });
+    var c = colsDeCausales(comoObj);
+    if (c.causal && c.detalle){ idxCab = i; cols = c; break; }
+  }
+  if (!cols) throw new Error('No se encontraron las columnas CAUSAL y DETALLE. Revise los encabezados del archivo.');
+
+  function valor(fila, clave){
+    if (!cols[clave]) return '';
+    var k = parseInt(cols[clave].slice(1), 10);
+    return fila[k] == null ? '' : String(fila[k]).trim();
+  }
+
+  var grupos = [], porNombre = {}, ultimaCausal = '', descartadas = 0;
+  for (var f = idxCab + 1; f < filasArr.length; f++){
+    var fila = filasArr[f];
+    var causal = valor(fila, 'causal') || ultimaCausal;  // permite dejar la causal en blanco y repetir la anterior
+    var detalle = valor(fila, 'detalle');
+    if (!detalle){ descartadas++; continue; }
+    if (!causal){ descartadas++; continue; }
+    ultimaCausal = causal;
+    if (!porNombre[causal]){
+      porNombre[causal] = { causal: causal, detalles: [] };
+      grupos.push(porNombre[causal]);
+    }
+    porNombre[causal].detalles.push({
+      detalle: detalle,
+      multa: aNumero(valor(fila, 'multa')),
+      partidos: aNumero(valor(fila, 'partidos')),
+      articulo: valor(fila, 'articulo')
+    });
+  }
+  if (!grupos.length) throw new Error('El archivo no trae filas con detalle de causal.');
+  return { grupos: grupos, descartadas: descartadas };
+}
+
+async function leerCausalesArchivo(file){
+  if (/\.csv$/i.test(file.name)){
+    return armarCausales(csvAFilas(await file.text()));
+  }
+  if (!/\.xlsx$/i.test(file.name)){
+    throw new Error('Formato no reconocido: use un archivo .xlsx o .csv.');
+  }
+  var zip = await zipEntradas(await file.arrayBuffer());
+  var cadenas = xlsxCadenas(await zipLeerTexto(zip, 'xl/sharedStrings.xml'));
+  var hojas = Object.keys(zip.entradas).filter(function(n){ return /^xl\/worksheets\/sheet\d+\.xml$/.test(n); }).sort();
+  if (!hojas.length) throw new Error('El archivo no contiene hojas de cálculo.');
+  var filas = xlsxCeldas(await zipLeerTexto(zip, hojas[0]), cadenas);
+
+  /* Mapa de celdas -> arreglo de filas por posición de columna */
+  var nums = Object.keys(filas).map(Number).sort(function(a,b){ return a-b; });
+  function colIndice(letras){
+    var n = 0;
+    for (var i = 0; i < letras.length; i++) n = n * 26 + (letras.charCodeAt(i) - 64);
+    return n - 1;
+  }
+  var out = [];
+  nums.forEach(function(nf){
+    var fila = [];
+    Object.keys(filas[nf]).forEach(function(col){ fila[colIndice(col)] = filas[nf][col]; });
+    for (var i = 0; i < fila.length; i++) if (fila[i] == null) fila[i] = '';
+    out.push(fila);
+  });
+  return armarCausales(out);
+}
+
+function abrirImportarCausales(){
+  var input = document.getElementById('fileCausales');
+  if (input){ input.value = ''; input.click(); }
+}
+
+async function procesarArchivoCausales(file){
+  if (!file) return;
+  var datos;
+  try {
+    datos = await leerCausalesArchivo(file);
+  } catch (err) {
+    alertModal('No se pudo leer el archivo', '<p>' + escapeHtml(err && err.message ? err.message : String(err)) + '</p>');
+    return;
+  }
+  var totalDetalles = datos.grupos.reduce(function(n, g){ return n + g.detalles.length; }, 0);
+  var muestra = [];
+  datos.grupos.forEach(function(g){
+    g.detalles.slice(0, 2).forEach(function(d){
+      if (muestra.length < 6){
+        muestra.push('<tr><td>' + escapeHtml(g.causal) + '</td><td>' + escapeHtml(d.detalle) + '</td><td>' +
+          fmtMoney(d.multa) + '</td><td>' + (d.partidos ? d.partidos + ' fecha(s)' : '—') + '</td><td>' + escapeHtml(d.articulo || '—') + '</td></tr>');
+      }
+    });
+  });
+
+  var usadas = {};
+  STATE.sanciones.forEach(function(s){ usadas[s.causal + '||' + s.detalle] = true; });
+  var enUso = Object.keys(usadas).length;
+
+  formModal({
+    title: 'Importar tabla de causales',
+    okText: 'Importar',
+    bodyHtml:
+      '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Archivo: <strong>' + escapeHtml(file.name) + '</strong> — ' +
+        datos.grupos.length + ' causal(es) y ' + totalDetalles + ' detalle(s).' +
+        (datos.descartadas ? ' Se ignoraron ' + datos.descartadas + ' fila(s) incompletas.' : '') + '</p>' +
+      '<div class="field"><label>Qué hacer con la tabla actual</label><select name="modo" style="width:100%;">' +
+        '<option value="reemplazar">Reemplazarla por la del archivo</option>' +
+        '<option value="agregar">Mantenerla y agregar lo que falte</option>' +
+      '</select></div>' +
+      (enUso ? '<div style="margin-top:12px;padding:9px 11px;border-radius:8px;background:var(--gold-soft);color:var(--gold-dark);font-size:12px;">' +
+        'Hay ' + enUso + ' combinación(es) de causal y detalle ya usadas en sanciones registradas. Esas sanciones ' +
+        'conservan su texto, multa y suspensión tal como quedaron: cambiar la tabla no las altera.</div>' : '') +
+      '<div class="tbl-wrap" style="margin-top:12px;"><table class="tbl"><thead><tr>' +
+        '<th>Causal</th><th>Detalle</th><th>Multa</th><th>Sanción</th><th>Art.</th>' +
+        '</tr></thead><tbody>' + muestra.join('') +
+        (totalDetalles > muestra.length ? '<tr><td colspan="5" class="muted" style="font-size:11.5px;">… y ' + (totalDetalles - muestra.length) + ' detalle(s) más</td></tr>' : '') +
+        '</tbody></table></div>',
+    onOk: function(form){
+      if (form.modo.value === 'reemplazar'){
+        STATE.causales = datos.grupos;
+      } else {
+        var porNombre = {};
+        STATE.causales.forEach(function(g){ porNombre[g.causal] = g; });
+        datos.grupos.forEach(function(g){
+          if (!porNombre[g.causal]){ STATE.causales.push(g); porNombre[g.causal] = g; return; }
+          var existentes = {};
+          porNombre[g.causal].detalles.forEach(function(d){ existentes[d.detalle] = true; });
+          g.detalles.forEach(function(d){ if (!existentes[d.detalle]) porNombre[g.causal].detalles.push(d); });
+        });
+      }
+      logActivity('Tabla de causales importada',
+        datos.grupos.length + ' causal(es), ' + totalDetalles + ' detalle(s) — ' +
+        (form.modo.value === 'reemplazar' ? 'reemplazó la tabla anterior' : 'agregada a la existente') + ' desde ' + file.name);
+      renderAll();
+      toast('Tabla de causales actualizada: ' + totalDetalles + ' detalle(s).');
+    }
+  });
+}
+
+/* Formato de referencia en CSV, con la tabla vigente como ejemplo */
+function descargarFormatoCausales(){
+  var lineas = ['CAUSAL;DETALLE;MULTA;SANCION (FECHAS);ARTICULO'];
+  STATE.causales.forEach(function(g){
+    g.detalles.forEach(function(d){
+      lineas.push([g.causal, d.detalle, d.multa || 0, d.partidos || 0, d.articulo || '']
+        .map(function(v){ return '"' + String(v).replace(/"/g, '""') + '"'; }).join(';'));
+    });
+  });
+  var blob = new Blob(['\uFEFF' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'formato_causales_estrellas_de_barrio_2026.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  toast('Formato descargado: edítelo en Excel y vuelva a importarlo.');
+}
+
+function initImportarCausales(){
+  var input = document.getElementById('fileCausales');
+  if (input) input.addEventListener('change', function(){
+    procesarArchivoCausales(input.files && input.files[0]);
+  });
+}
+
+/* Tarjeta de administración de la tabla, dentro de Historial de Sanciones */
+function renderCausalesCard(){
+  var total = STATE.causales.reduce(function(n, g){ return n + g.detalles.length; }, 0);
+  return '<div class="card">' +
+    '<div class="card-head"><div><h3>Tabla de causales</h3>' +
+    '<p class="desc" style="margin:2px 0 0;">' + STATE.causales.length + ' causal(es) y ' + total + ' detalle(s). ' +
+    'Alimenta los desplegables de Causal y Detalle en esta pestaña y en el Acta, con su multa y sanción de referencia.</p></div>' +
+    (esAdmin() ?
+      '<div class="row-flex">' +
+        '<button class="btn btn-ghost btn-xs" id="btnFormatoCausales">📄 Descargar formato</button>' +
+        '<button class="btn btn-primary btn-xs" id="btnImportCausales">📥 Importar causales</button>' +
+      '</div>' : '') +
+    '</div></div>';
+}
+
 /* ---- ui_usuarios.js ---- */
 /* ============================================================================
    USUARIOS, CLAVE DE ACCESO Y PERMISOS
@@ -3544,6 +3975,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   initIO();
   initSesionUI();
   initImportarNomina();
+  initImportarCausales();
   setSaveStatus('sinLinea');
   mostrarLogin('');  // la plataforma queda bloqueada hasta que alguien ingrese
 
