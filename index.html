@@ -136,6 +136,14 @@
   .pill-green{ background:var(--green-soft); color:var(--green-dark); }
   .pill-gold{ background:var(--gold-soft); color:var(--gold-dark); }
   .pill-red{ background:var(--danger-soft); color:var(--danger); }
+  .txt-red{ color:var(--danger); }
+  .txt-green{ color:var(--green-dark); }
+  /* Racha de resultados en la tabla de posiciones */
+  .dot{ display:inline-block; width:11px; height:11px; border-radius:50%; margin-right:3px; vertical-align:middle; }
+  .dot-g{ background:var(--green); }
+  .dot-e{ background:var(--gold); }
+  .dot-p{ background:var(--danger); }
+  .dot-x{ background:var(--line); }
   .pill-muted{ background:var(--panel-2); color:var(--muted); }
   .save-status{ font-size:11.5px; white-space:nowrap; }
   #readOnlyBanner{ display:none; background:var(--gold-soft); color:var(--gold-dark); border-bottom:1px solid var(--line);
@@ -197,6 +205,8 @@
   body.rol-mesa #panel-circular input, body.rol-mesa #panel-circular select,
   body.rol-mesa #panel-circular textarea,
   body.rol-mesa #panel-circular button:not(#btnImprimirCircular){ pointer-events:none; opacity:.5; }
+  /* Los pagos los registra el administrador; la mesa solo consulta */
+  body.rol-mesa #panel-historialclub input, body.rol-mesa #panel-historialclub select:not(#histClubSel){ pointer-events:none; opacity:.5; }
 
   /* ---------- Menú móvil (oculto en escritorio) ---------- */
   #btnMenu{ display:none; }
@@ -305,6 +315,7 @@
       <button class="tab-btn" data-tab="goleadores"><span class="ic">⚽</span> Tabla de Goleadores</button>
       <button class="tab-btn" data-tab="acta"><span class="ic">📝</span> Acta de Partido</button>
       <button class="tab-btn" data-tab="circular"><span class="ic">📰</span> Circular</button>
+      <button class="tab-btn" data-tab="historialclub"><span class="ic">🏦</span> Historial por Club</button>
       <button class="tab-btn" data-tab="historial"><span class="ic">🕒</span> Historial de Actividad</button>
       <button class="tab-btn" data-tab="usuarios"><span class="ic">🔐</span> Usuarios y Accesos</button>
     </nav>
@@ -341,6 +352,7 @@
       <section class="tab-panel" id="panel-goleadores"></section>
       <section class="tab-panel" id="panel-acta"></section>
       <section class="tab-panel" id="panel-circular"></section>
+      <section class="tab-panel" id="panel-historialclub"></section>
       <section class="tab-panel" id="panel-historial"></section>
       <section class="tab-panel" id="panel-usuarios"></section>
     </div>
@@ -385,17 +397,12 @@ var __uidCounter = 1;
 function uid(prefix){ return (prefix || 'id') + '_' + (__uidCounter++) + '_' + Math.random().toString(36).slice(2, 8); }
 
 function fmtMoney(n){
+  /* Miles con punto, formato chileno. La versión anterior agrupaba los dígitos
+     desde la izquierda y mostraba $40.000 como "$400.00". */
   n = Number(n) || 0;
-  var s = Math.round(n).toString();
-  var neg = s[0] === '-';
-  if (neg) s = s.slice(1);
-  var out = '';
-  for (var i = 0; i < s.length; i++){
-    var pos = s.length - i;
-    out = s[s.length-1-i] + out;
-    if (pos > 1 && pos % 3 === 1) out = '.' + out;
-  }
-  return (neg ? '-$' : '$') + out;
+  var s = Math.abs(Math.round(n)).toString();
+  var out = s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return (n < 0 ? '-$' : '$') + out;
 }
 
 function escapeHtml(s){
@@ -733,6 +740,8 @@ function buildInitialState(){
     actas: {},       // matchId -> { acciones:[{id,lado,playerId,tipo,minuto,causal,detalle,multa,enviadaSanciones}], resultadoAplicado:bool, rojasEnviadas:[] }
     sanciones: [],
     causales: JSON.parse(JSON.stringify(CAUSALES)),
+    pagosPlanilla: {},
+    valorPlanilla: VALOR_PLANILLA_DEFECTO,
     causalesVersion: CAUSALES_VERSION,
     usuarios: crearUsuariosIniciales(),
     historial: []   // [{id, ts, autor, accion, detalle}] — quién hizo qué y cuándo
@@ -771,9 +780,10 @@ function computeStandings(state, grupo){
   var equipos = state.equipos.filter(function(e){ return e.grupo === grupo; });
   var stats = {};
   equipos.forEach(function(e){
-    stats[e.id] = { teamId:e.id, nombre:e.nombre, pj:0, pg:0, pe:0, pp:0, gf:0, gc:0, dif:0, pts:0 };
+    stats[e.id] = { teamId:e.id, nombre:e.nombre, pj:0, pg:0, pe:0, pp:0, gf:0, gc:0, dif:0, pts:0, racha:[] };
   });
-  state.partidos.forEach(function(p){
+  /* En orden de partido, para que la racha quede cronológica */
+  state.partidos.slice().sort(function(a,b){ return a.numero - b.numero; }).forEach(function(p){
     if (p.grupo !== grupo) return;
     if (p.golesLocal === null || p.golesLocal === undefined || p.golesLocal === '') return;
     if (p.golesVisita === null || p.golesVisita === undefined || p.golesVisita === '') return;
@@ -783,14 +793,17 @@ function computeStandings(state, grupo){
     sl.pj++; sv.pj++;
     sl.gf += gl; sl.gc += gv;
     sv.gf += gv; sv.gc += gl;
-    if (gl > gv){ sl.pg++; sv.pp++; }
-    else if (gv > gl){ sv.pg++; sl.pp++; }
-    else { sl.pe++; sv.pe++; }
+    if (gl > gv){ sl.pg++; sv.pp++; sl.racha.push('G'); sv.racha.push('P'); }
+    else if (gv > gl){ sv.pg++; sl.pp++; sv.racha.push('G'); sl.racha.push('P'); }
+    else { sl.pe++; sv.pe++; sl.racha.push('E'); sv.racha.push('E'); }
   });
   var arr = equipos.map(function(e){
     var s = stats[e.id];
     s.dif = s.gf - s.gc;
     s.pts = s.pg*3 + s.pe;
+    /* Rendimiento: puntos obtenidos sobre los puntos en disputa (3 por partido) */
+    s.rend = s.pj ? (s.pts * 100) / (s.pj * 3) : 0;
+    s.ultimos = s.racha.slice(-5);
     return s;
   });
   arr.sort(function(a,b){
@@ -938,11 +951,17 @@ var TAB_TITLES = {
   goleadores: ['Tabla de Goleadores', 'Rankings globales del campeonato.'],
   acta: ['Acta de Partido', 'Registro oficial de goles, autogoles, faltas y tarjetas.'],
   circular: ['Circular', 'Resumen de una jornada, listo para imprimir.'],
-  historial: ['Historial de Actividad', 'Quién hizo cada acción y cuándo.'],
+  historialclub: ['Historial por Club', 'Tarjetas, multas, planillas y flujo económico de cada club.'],
+  historial: ['Historial de Actividad', 'Quién hizo cada acción y cuándo. Solo el administrador.'],
   usuarios: ['Usuarios y Accesos', 'Usuarios, claves y permisos de la plataforma.']
 };
 
 function switchTab(tab){
+  /* Ninguna pestaña se abre fuera del perfil, aunque se invoque desde otro lado */
+  if (SESION){
+    var permitidas = TABS_POR_ROL[SESION.rol] || [];
+    if (permitidas.indexOf(tab) === -1) tab = permitidas[0] || tab;
+  }
   document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.tab === tab); });
   document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.toggle('active', p.id === 'panel-' + tab); });
   var t = TAB_TITLES[tab];
@@ -1175,6 +1194,8 @@ function normalizarEstadoCargado(data){
   data.planillas = data.planillas || {};
   data.actas = data.actas || {};
   data.sanciones = data.sanciones || [];
+  data.pagosPlanilla = data.pagosPlanilla || {};
+  if (data.valorPlanilla === undefined || data.valorPlanilla === null) data.valorPlanilla = VALOR_PLANILLA_DEFECTO;
   data.causales = data.causales && data.causales.length ? data.causales : JSON.parse(JSON.stringify(CAUSALES));
   /* Si el estado guardado traía la tabla antigua y nadie la personalizó (no hay
      versión marcada), se actualiza a la de la Regla 12 IFAB 2026/27. Una tabla
@@ -1621,6 +1642,27 @@ function abrirModalAgregarPartido(){
 /* ============================================================================
    TAB: TABLA DE POSICIONES
    ============================================================================ */
+/* Rendimiento con un decimal, como se muestra en las tablas del fútbol chileno */
+function fmtRend(r){
+  if (!r) return '0%';
+  var v = Math.round(r * 10) / 10;
+  return (v % 1 === 0 ? v.toFixed(0) : v.toFixed(1).replace('.', ',')) + '%';
+}
+
+/* Racha de los últimos 5 partidos: verde ganado, amarillo empatado, rojo
+   perdido. Los partidos no jugados quedan como punto gris. */
+function rachaHtml(ultimos){
+  ultimos = ultimos || [];
+  var out = '';
+  var titulos = { G: 'Ganado', E: 'Empatado', P: 'Perdido' };
+  for (var i = 0; i < 5; i++){
+    var r = ultimos[i];
+    var cls = r === 'G' ? 'dot-g' : r === 'E' ? 'dot-e' : r === 'P' ? 'dot-p' : 'dot-x';
+    out += '<span class="dot ' + cls + '" title="' + (titulos[r] || 'Sin jugar') + '"></span>';
+  }
+  return out;
+}
+
 function renderPosicionesGrupo(grupo){
   var rows = computeStandings(STATE, grupo);
   var trs = rows.map(function(s){
@@ -1633,13 +1675,16 @@ function renderPosicionesGrupo(grupo){
       '<td>' + s.pj + '</td><td>' + s.pg + '</td><td>' + s.pe + '</td><td>' + s.pp + '</td>' +
       '<td>' + s.gf + '</td><td>' + s.gc + '</td><td>' + (s.dif>0?'+':'') + s.dif + '</td>' +
       '<td><b>' + s.pts + '</b></td>' +
+      '<td>' + fmtRend(s.rend) + '</td>' +
+      '<td style="white-space:nowrap;">' + rachaHtml(s.ultimos) + '</td>' +
       '<td><span class="pill ' + cls + '">' + situacion + '</span></td>' +
     '</tr>';
   }).join('');
   return '<div class="card">' +
     '<div class="card-head"><h3><span class="pill pill-' + grupo + '">GRUPO ' + grupo + '</span></h3></div>' +
     '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-    '<th>Pos</th><th>Club</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>GF</th><th>GC</th><th>Dif</th><th>Pts</th><th>Situación</th>' +
+    '<th>Pos</th><th>Club</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>GF</th><th>GC</th><th>Dif</th><th>Pts</th>' +
+    '<th title="Puntos obtenidos sobre los puntos en disputa">Rend.</th><th title="Últimos 5 partidos, del más antiguo al más reciente">Últimos</th><th>Situación</th>' +
     '</tr></thead><tbody>' + trs + '</tbody></table></div>' +
   '</div>';
 }
@@ -1651,7 +1696,10 @@ function renderPosiciones(){
       '<h3>Criterio de clasificación</h3>' +
       '<p class="desc">Puntos → diferencia de gol → partidos ganados → goles a favor (bases 3.5). Clasifican los ' +
       '4 primeros de cada grupo a la llave de eliminación directa; los 2 últimos pierden la categoría (bases 3.6). ' +
-      'Un empate exacto en estos cuatro criterios se resuelve manualmente por la organización (resultado directo, fair play, sorteo).</p>' +
+      'Un empate exacto en estos cuatro criterios se resuelve manualmente por la organización (resultado directo, fair play, sorteo). ' +
+      'El rendimiento es el porcentaje de puntos obtenidos sobre los puntos en disputa y no incide en la clasificación. ' +
+      'La columna Últimos muestra los cinco partidos más recientes, del más antiguo al más nuevo: ' +
+      '<span class="dot dot-g"></span> ganado, <span class="dot dot-e"></span> empatado, <span class="dot dot-p"></span> perdido.</p>' +
     '</div>' +
     renderPosicionesGrupo('A') + renderPosicionesGrupo('B');
 }
@@ -2728,6 +2776,8 @@ var HISTORIAL_FILTRO = '';
 
 function renderHistorial(){
   var panel = document.getElementById('panel-historial');
+  /* El Historial de Actividad es exclusivo del administrador */
+  if (!esAdmin()){ panel.innerHTML = ''; return; }
   var lista = (STATE.historial || []);
   var filtro = HISTORIAL_FILTRO.trim().toLowerCase();
   var filtrada = filtro ? lista.filter(function(h){
@@ -3351,6 +3401,334 @@ function pedirSuspensionLibre(valorActual, alConfirmar, alCancelar){
   });
 }
 
+/* ---- ui_historial_club.js ---- */
+/* ============================================================================
+   TAB: HISTORIAL POR CLUB
+
+   Consolida por club lo disciplinario y lo económico: amonestaciones y
+   expulsiones registradas en las actas, multas cursadas y pagadas, y el pago de
+   la planilla de cada fecha. El flujo de movimientos deja cargos y abonos en
+   orden cronológico con saldo acumulado, para llevar el registro de lo que cada
+   club debe y ha pagado.
+
+   Las tarjetas se cuentan desde las actas de partido (fuente única, evita el
+   doble conteo con las sanciones que se generan a partir de ellas).
+   ============================================================================ */
+
+var HISTCLUB_SELECTED = null;
+var VALOR_PLANILLA_DEFECTO = 35000;   // bases 2026: planilla por equipo
+
+function valorPlanilla(){
+  var v = Number(STATE.valorPlanilla);
+  return isNaN(v) || v < 0 ? VALOR_PLANILLA_DEFECTO : v;
+}
+
+function pagosDeClub(teamId){
+  STATE.pagosPlanilla = STATE.pagosPlanilla || {};
+  if (!STATE.pagosPlanilla[teamId]) STATE.pagosPlanilla[teamId] = {};
+  return STATE.pagosPlanilla[teamId];
+}
+
+/* Jornadas en las que al club le corresponde pagar planilla: aquellas donde
+   tiene al menos un partido programado. */
+function jornadasDeClub(teamId){
+  var vistas = {}, out = [];
+  STATE.partidos.slice().sort(function(a,b){ return a.numero - b.numero; }).forEach(function(p){
+    if (p.localId !== teamId && p.visitaId !== teamId) return;
+    if (vistas[p.jornada]) return;
+    vistas[p.jornada] = true;
+    out.push({ jornada: p.jornada, dia: p.dia });
+  });
+  return out;
+}
+
+function tarjetasDeClub(teamId){
+  var amarillas = 0, rojas = 0;
+  Object.keys(STATE.actas || {}).forEach(function(mid){
+    (STATE.actas[mid].acciones || []).forEach(function(a){
+      var j = getJugador(STATE, a.playerId);
+      if (!j || j.teamId !== teamId) return;
+      if (a.tipo === 'amarilla') amarillas++;
+      else if (a.tipo === 'roja') rojas++;
+    });
+  });
+  return { amarillas: amarillas, rojas: rojas };
+}
+
+function resumenClub(teamId){
+  var t = tarjetasDeClub(teamId);
+  var sanciones = STATE.sanciones.filter(function(s){ return s.teamId === teamId; });
+  var multasCursadas = sanciones.reduce(function(n, s){ return n + (Number(s.multa) || 0); }, 0);
+  var multasPagadas = sanciones.filter(function(s){ return s.pagada === 'Sí'; })
+    .reduce(function(n, s){ return n + (Number(s.multa) || 0); }, 0);
+  var fechasSusp = sanciones.reduce(function(n, s){ return n + (Number(s.partidos) || 0); }, 0);
+
+  var jornadas = jornadasDeClub(teamId);
+  var pagos = pagosDeClub(teamId);
+  var planillasPagadas = 0, planillasMonto = 0;
+  jornadas.forEach(function(j){
+    var pg = pagos[j.jornada];
+    if (pg && pg.pagado){ planillasPagadas++; planillasMonto += (Number(pg.monto) || valorPlanilla()); }
+  });
+  var planillasCursadas = jornadas.length * valorPlanilla();
+
+  return {
+    teamId: teamId,
+    amarillas: t.amarillas, rojas: t.rojas,
+    sanciones: sanciones.length, fechasSusp: fechasSusp,
+    multasCursadas: multasCursadas, multasPagadas: multasPagadas,
+    multasPendientes: multasCursadas - multasPagadas,
+    jornadas: jornadas.length, planillasPagadas: planillasPagadas,
+    planillasCursadas: planillasCursadas, planillasMonto: planillasMonto,
+    planillasPendientes: planillasCursadas - planillasMonto,
+    deuda: (multasCursadas - multasPagadas) + (planillasCursadas - planillasMonto)
+  };
+}
+
+/* Movimientos del club en orden cronológico, con saldo acumulado. */
+function flujoClub(teamId){
+  var mov = [];
+  STATE.sanciones.filter(function(s){ return s.teamId === teamId; }).forEach(function(s){
+    if (!(Number(s.multa) > 0)) return;
+    mov.push({
+      fecha: s.fecha || '', tipo: 'Multa',
+      concepto: s.detalle || s.causal || 'Sanción',
+      referencia: s.persona || '',
+      cargo: Number(s.multa) || 0,
+      abono: s.pagada === 'Sí' ? (Number(s.multa) || 0) : 0,
+      pagado: s.pagada === 'Sí'
+    });
+  });
+  var pagos = pagosDeClub(teamId);
+  jornadasDeClub(teamId).forEach(function(j){
+    var pg = pagos[j.jornada] || {};
+    var monto = Number(pg.monto);
+    if (isNaN(monto) || monto <= 0) monto = valorPlanilla();
+    mov.push({
+      fecha: j.dia || '', tipo: 'Planilla',
+      concepto: 'Planilla de juego — ' + j.jornada,
+      referencia: pg.pagado && pg.fechaPago ? 'Pagada el ' + fmtDateEs(pg.fechaPago) : '',
+      cargo: valorPlanilla(),
+      abono: pg.pagado ? monto : 0,
+      pagado: !!pg.pagado
+    });
+  });
+  mov.sort(function(a, b){
+    if ((a.fecha || '') !== (b.fecha || '')) return (a.fecha || '').localeCompare(b.fecha || '');
+    return a.tipo.localeCompare(b.tipo);
+  });
+  var saldo = 0;
+  mov.forEach(function(m){ saldo += m.cargo - m.abono; m.saldo = saldo; });
+  return mov;
+}
+
+function renderHistorialClub(){
+  var panel = document.getElementById('panel-historialclub');
+  if (!panel) return;
+  if (!STATE.equipos.length){ panel.innerHTML = '<div class="card"><div class="empty-hint">No hay equipos cargados.</div></div>'; return; }
+  if (!HISTCLUB_SELECTED || !getEquipo(STATE, HISTCLUB_SELECTED)) HISTCLUB_SELECTED = STATE.equipos[0].id;
+
+  /* --- Resumen general de los 12 clubes --- */
+  var resumenes = STATE.equipos.map(function(e){ return { equipo: e, r: resumenClub(e.id) }; });
+  var totales = resumenes.reduce(function(acc, x){
+    acc.amarillas += x.r.amarillas; acc.rojas += x.r.rojas;
+    acc.multasCursadas += x.r.multasCursadas; acc.multasPagadas += x.r.multasPagadas;
+    acc.planillasCursadas += x.r.planillasCursadas; acc.planillasMonto += x.r.planillasMonto;
+    acc.deuda += x.r.deuda;
+    return acc;
+  }, { amarillas:0, rojas:0, multasCursadas:0, multasPagadas:0, planillasCursadas:0, planillasMonto:0, deuda:0 });
+
+  var filas = resumenes.map(function(x){
+    var r = x.r;
+    return '<tr>' +
+      '<td>' + teamLogoHtml(x.equipo) + ' ' + escapeHtml(x.equipo.nombre) + '</td>' +
+      '<td><span class="pill pill-gold">🟨 ' + r.amarillas + '</span></td>' +
+      '<td><span class="pill pill-red">🟥 ' + r.rojas + '</span></td>' +
+      '<td>' + r.fechasSusp + '</td>' +
+      '<td>' + fmtMoney(r.multasCursadas) + '</td>' +
+      '<td>' + fmtMoney(r.multasPagadas) + '</td>' +
+      '<td>' + r.planillasPagadas + ' / ' + r.jornadas + '</td>' +
+      '<td>' + fmtMoney(r.planillasMonto) + '</td>' +
+      '<td><b class="' + (r.deuda > 0 ? 'txt-red' : 'txt-green') + '">' + fmtMoney(r.deuda) + '</b></td>' +
+      '<td><button class="btn btn-ghost btn-xs hc-ver" data-id="' + x.equipo.id + '">Ver detalle</button></td>' +
+    '</tr>';
+  }).join('');
+
+  var equipo = getEquipo(STATE, HISTCLUB_SELECTED);
+  var res = resumenClub(HISTCLUB_SELECTED);
+  var opts = STATE.equipos.map(function(e){
+    return '<option value="' + e.id + '"' + (e.id === HISTCLUB_SELECTED ? ' selected' : '') + '>' + escapeHtml(e.nombre) + '</option>';
+  }).join('');
+
+  /* --- Planilla por fecha del club seleccionado --- */
+  var pagos = pagosDeClub(HISTCLUB_SELECTED);
+  var filasPlanilla = jornadasDeClub(HISTCLUB_SELECTED).map(function(j){
+    var pg = pagos[j.jornada] || {};
+    var monto = (pg.monto === undefined || pg.monto === null || pg.monto === '') ? valorPlanilla() : pg.monto;
+    return '<tr>' +
+      '<td><b>' + escapeHtml(j.jornada) + '</b></td>' +
+      '<td>' + (j.dia ? fmtDateEs(j.dia) : '—') + '</td>' +
+      '<td><input class="txt-input pl-monto" type="number" min="0" step="1000" data-j="' + escapeHtml(j.jornada) + '" value="' + monto + '" style="width:110px;"></td>' +
+      '<td><select class="pl-pagado" data-j="' + escapeHtml(j.jornada) + '">' +
+        '<option value="No"' + (pg.pagado ? '' : ' selected') + '>No</option>' +
+        '<option value="Sí"' + (pg.pagado ? ' selected' : '') + '>Sí</option>' +
+      '</select></td>' +
+      '<td><input class="txt-input pl-fecha" type="date" data-j="' + escapeHtml(j.jornada) + '" value="' + escapeHtml(pg.fechaPago || '') + '"></td>' +
+      '<td><input class="txt-input pl-obs" data-j="' + escapeHtml(j.jornada) + '" value="' + escapeHtml(pg.obs || '') + '" placeholder="N° comprobante, quién pagó…" style="min-width:150px;"></td>' +
+    '</tr>';
+  }).join('');
+
+  /* --- Flujo de movimientos --- */
+  var mov = flujoClub(HISTCLUB_SELECTED);
+  var filasFlujo = mov.length ? mov.map(function(m){
+    return '<tr>' +
+      '<td>' + (m.fecha ? fmtDateEs(m.fecha) : '—') + '</td>' +
+      '<td><span class="pill ' + (m.tipo === 'Multa' ? 'pill-red' : 'pill-muted') + '">' + m.tipo + '</span></td>' +
+      '<td>' + escapeHtml(m.concepto) + (m.referencia ? '<div class="muted" style="font-size:11px;">' + escapeHtml(m.referencia) + '</div>' : '') + '</td>' +
+      '<td>' + fmtMoney(m.cargo) + '</td>' +
+      '<td>' + (m.abono ? fmtMoney(m.abono) : '—') + '</td>' +
+      '<td>' + (m.pagado ? '<span class="pill pill-green">Pagado</span>' : '<span class="pill pill-gold">Pendiente</span>') + '</td>' +
+      '<td><b>' + fmtMoney(m.saldo) + '</b></td>' +
+    '</tr>';
+  }).join('') : '<tr><td colspan="7" class="empty-hint">Este club aún no tiene movimientos.</td></tr>';
+
+  /* --- Sanciones del club --- */
+  var sanciones = STATE.sanciones.filter(function(s){ return s.teamId === HISTCLUB_SELECTED; })
+    .sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
+  var filasSanc = sanciones.length ? sanciones.map(function(s){
+    return '<tr>' +
+      '<td>' + fmtDateEs(s.fecha) + '</td>' +
+      '<td>' + escapeHtml(s.persona) + '<div class="muted" style="font-size:11px;">' + escapeHtml(s.cargo) + '</div></td>' +
+      '<td>' + escapeHtml(s.detalle || s.causal || '—') + '</td>' +
+      '<td>' + fmtMoney(s.multa) + '</td>' +
+      '<td>' + (s.partidos ? etiquetaSuspension(s.partidos) : '—') + '</td>' +
+      '<td>' + (s.pagada === 'Sí' ? '<span class="pill pill-green">Pagada</span>' : '<span class="pill pill-gold">Impaga</span>') + '</td>' +
+    '</tr>';
+  }).join('') : '<tr><td colspan="6" class="empty-hint">Sin sanciones registradas.</td></tr>';
+
+  panel.innerHTML =
+    '<div class="card">' +
+      '<div class="card-head"><div><h3>Resumen de los 12 clubes</h3>' +
+      '<p class="desc" style="margin:2px 0 0;">Tarjetas contadas desde las actas de partido; multas y pagos desde el ' +
+      'Historial de Sanciones. La deuda suma multas impagas más planillas pendientes.</p></div>' +
+      (esAdmin() ? '<div class="field" style="margin:0;"><label>Valor planilla por fecha</label>' +
+        '<input class="txt-input" type="number" min="0" step="1000" id="valorPlanillaInput" value="' + valorPlanilla() + '" style="width:120px;"></div>' : '') +
+      '</div>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>Club</th><th>Amonest.</th><th>Expuls.</th><th>Fechas susp.</th><th>Multas cursadas</th><th>Multas pagadas</th>' +
+        '<th>Planillas pagadas</th><th>Monto planillas</th><th>Deuda total</th><th></th>' +
+      '</tr></thead><tbody>' + filas + '</tbody>' +
+      '<tfoot><tr>' +
+        '<td><b>Totales</b></td>' +
+        '<td><b>' + totales.amarillas + '</b></td><td><b>' + totales.rojas + '</b></td><td></td>' +
+        '<td><b>' + fmtMoney(totales.multasCursadas) + '</b></td>' +
+        '<td><b>' + fmtMoney(totales.multasPagadas) + '</b></td>' +
+        '<td></td><td><b>' + fmtMoney(totales.planillasMonto) + '</b></td>' +
+        '<td><b>' + fmtMoney(totales.deuda) + '</b></td><td></td>' +
+      '</tr></tfoot></table></div>' +
+    '</div>' +
+
+    '<div class="card">' +
+      '<div class="card-head"><div><h3>Detalle del club</h3>' +
+      '<p class="desc" style="margin:2px 0 0;">Elija un club para ver su planilla por fecha, su flujo de movimientos y sus sanciones.</p></div>' +
+      '<select id="histClubSel" style="min-width:220px;">' + opts + '</select></div>' +
+      '<div class="row-flex" style="gap:18px;flex-wrap:wrap;margin-top:6px;">' +
+        '<div><div class="muted" style="font-size:11px;">AMONESTACIONES</div><div style="font-size:22px;font-weight:800;">' + res.amarillas + '</div></div>' +
+        '<div><div class="muted" style="font-size:11px;">EXPULSIONES</div><div style="font-size:22px;font-weight:800;">' + res.rojas + '</div></div>' +
+        '<div><div class="muted" style="font-size:11px;">MULTAS CURSADAS</div><div style="font-size:22px;font-weight:800;">' + fmtMoney(res.multasCursadas) + '</div></div>' +
+        '<div><div class="muted" style="font-size:11px;">MULTAS PAGADAS</div><div style="font-size:22px;font-weight:800;">' + fmtMoney(res.multasPagadas) + '</div></div>' +
+        '<div><div class="muted" style="font-size:11px;">PLANILLAS PAGADAS</div><div style="font-size:22px;font-weight:800;">' + res.planillasPagadas + ' / ' + res.jornadas + '</div></div>' +
+        '<div><div class="muted" style="font-size:11px;">DEUDA TOTAL</div><div style="font-size:22px;font-weight:800;" class="' + (res.deuda > 0 ? 'txt-red' : 'txt-green') + '">' + fmtMoney(res.deuda) + '</div></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="card">' +
+      '<h3>Planilla de juego pagada por fecha — ' + escapeHtml(equipo.nombre) + '</h3>' +
+      '<p class="desc">Una fila por cada fecha en la que el club juega. Marque el pago, ajuste el monto si difiere y ' +
+      'registre la fecha del pago y el comprobante.</p>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>Fecha del campeonato</th><th>Día</th><th>Monto $</th><th>Pagada</th><th>Fecha de pago</th><th>Observación</th>' +
+      '</tr></thead><tbody>' + filasPlanilla + '</tbody></table></div>' +
+    '</div>' +
+
+    '<div class="card">' +
+      '<h3>Flujo de movimientos — ' + escapeHtml(equipo.nombre) + '</h3>' +
+      '<p class="desc">Cargos y abonos en orden cronológico. El saldo acumulado es lo que el club adeuda a esa altura ' +
+      'del campeonato.</p>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Cargo</th><th>Abono</th><th>Estado</th><th>Saldo</th>' +
+      '</tr></thead><tbody>' + filasFlujo + '</tbody></table></div>' +
+    '</div>' +
+
+    '<div class="card">' +
+      '<h3>Sanciones del club — ' + escapeHtml(equipo.nombre) + '</h3>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>Fecha</th><th>Persona</th><th>Detalle</th><th>Multa</th><th>Sanción</th><th>Pago</th>' +
+      '</tr></thead><tbody>' + filasSanc + '</tbody></table></div>' +
+      '<p class="desc" style="margin-top:10px;">Las sanciones se editan en la pestaña Historial de Sanciones.</p>' +
+    '</div>';
+
+  /* --- Eventos --- */
+  document.getElementById('histClubSel').addEventListener('change', function(){
+    HISTCLUB_SELECTED = this.value;
+    renderHistorialClub();
+  });
+  panel.querySelectorAll('.hc-ver').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      HISTCLUB_SELECTED = btn.dataset.id;
+      renderHistorialClub();
+    });
+  });
+
+  var inputValor = document.getElementById('valorPlanillaInput');
+  if (inputValor) inputValor.addEventListener('change', function(){
+    var antes = valorPlanilla();
+    STATE.valorPlanilla = Math.max(0, Number(inputValor.value) || 0);
+    logActivity('Valor de planilla actualizado', fmtMoney(antes) + ' → ' + fmtMoney(valorPlanilla()));
+    renderAll();
+  });
+
+  function pagoDeJornada(jornada){
+    var pagos = pagosDeClub(HISTCLUB_SELECTED);
+    if (!pagos[jornada]) pagos[jornada] = { pagado: false, monto: valorPlanilla(), fechaPago: '', obs: '' };
+    return pagos[jornada];
+  }
+  panel.querySelectorAll('.pl-pagado').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var pg = pagoDeJornada(sel.dataset.j);
+      pg.pagado = sel.value === 'Sí';
+      if (pg.pagado && !pg.fechaPago) pg.fechaPago = isoDate(new Date());
+      if (!pg.pagado) pg.fechaPago = '';
+      logActivity('Planilla ' + (pg.pagado ? 'marcada como pagada' : 'marcada como impaga'),
+        (getEquipo(STATE, HISTCLUB_SELECTED) || {}).nombre + ' — ' + sel.dataset.j);
+      renderAll();
+      renderHistorialClub();
+    });
+  });
+  panel.querySelectorAll('.pl-monto').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var pg = pagoDeJornada(inp.dataset.j);
+      pg.monto = Math.max(0, Number(inp.value) || 0);
+      renderAll();
+      renderHistorialClub();
+    });
+  });
+  panel.querySelectorAll('.pl-fecha').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      pagoDeJornada(inp.dataset.j).fechaPago = inp.value;
+      renderAll();
+      renderHistorialClub();
+    });
+  });
+  panel.querySelectorAll('.pl-obs').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      pagoDeJornada(inp.dataset.j).obs = inp.value.trim();
+      renderAll();
+    });
+  });
+}
+RENDERERS.historialclub = renderHistorialClub;
+
 /* ---- ui_causales.js ---- */
 /* ============================================================================
    IMPORTAR LA TABLA DE CAUSALES (causal / detalle / multa / sanción)
@@ -3621,8 +3999,12 @@ function renderCausalesCard(){
    ROLES
    - admin   : todo, incluida la gestión de usuarios y la importación de datos.
    - mesa    : carga resultados de la jornada en curso, planillas, actas,
-               jugadores y sanciones. No edita Equipos, Circular ni calendario.
+               jugadores y sanciones. No edita Equipos, Circular ni calendario,
+               y no accede al Historial de Actividad.
    - general : solo consulta. Su ingreso también queda registrado.
+
+   El Historial de Actividad es exclusivo del administrador: registra quién hizo
+   cada cambio, incluidos los ingresos y salidas de todos los perfiles.
    ============================================================================ */
 
 /* --- SHA-256 en JS puro (sin depender de crypto.subtle ni de contexto seguro) --- */
@@ -3708,8 +4090,8 @@ var ROLES = {
 };
 
 var TABS_POR_ROL = {
-  admin:   ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular','historial','usuarios'],
-  mesa:    ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular','historial'],
+  admin:   ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular','historialclub','historial','usuarios'],
+  mesa:    ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular','historialclub'],
   general: ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular']
 };
 
@@ -3951,8 +4333,8 @@ function renderUsuarios(){
       '<h3>Qué puede hacer cada perfil</h3>' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Perfil</th><th>Alcance</th></tr></thead><tbody>' +
         '<tr><td><strong>Administrador</strong></td><td>Edita todo: equipos, calendario, resultados, planillas, actas, jugadores, sanciones y circular. Administra usuarios, importa y descarga datos.</td></tr>' +
-        '<tr><td><strong>Mesa de control</strong></td><td>Carga y corrige resultados mientras la jornada está abierta (hasta las 06:00 del día siguiente al último partido de esa fecha), más planillas, actas, jugadores y sanciones. No edita equipos, calendario ni circular.</td></tr>' +
-        '<tr><td><strong>General</strong></td><td>Solo consulta. Ve todas las pestañas salvo el Historial de Actividad y la gestión de usuarios.</td></tr>' +
+        '<tr><td><strong>Mesa de control</strong></td><td>Carga y corrige resultados mientras la jornada está abierta (hasta las 06:00 del día siguiente al último partido de esa fecha), más planillas, actas, jugadores y sanciones. No edita equipos, calendario ni circular, consulta el Historial por Club sin registrar pagos, y no accede al Historial de Actividad.</td></tr>' +
+        '<tr><td><strong>General</strong></td><td>Solo consulta. Ve las pestañas de competencia; no accede al Historial por Club, al Historial de Actividad ni a la gestión de usuarios.</td></tr>' +
       '</tbody></table></div>' +
       '<p class="desc" style="margin-top:10px;">Las claves se guardan cifradas (hash SHA-256 con salt), nunca en texto ' +
       'legible: si alguien olvida la suya, no se puede recuperar, hay que asignarle una nueva. Este control ordena el ' +
