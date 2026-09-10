@@ -144,6 +144,11 @@
   .dot-e{ background:var(--gold); }
   .dot-p{ background:var(--danger); }
   .dot-x{ background:var(--line); }
+  /* Recuadro de firma */
+  .firma-box{ position:relative; border:1px dashed var(--line); border-radius:10px; background:#fff;
+    height:190px; overflow:hidden; touch-action:none; }
+  .firma-box canvas{ width:100%; height:100%; display:block; touch-action:none; cursor:crosshair; }
+  .firma-linea{ position:absolute; left:8%; right:8%; bottom:34px; border-bottom:1px solid var(--line); pointer-events:none; }
   .pill-muted{ background:var(--panel-2); color:var(--muted); }
   .save-status{ font-size:11.5px; white-space:nowrap; }
   #readOnlyBanner{ display:none; background:var(--gold-soft); color:var(--gold-dark); border-bottom:1px solid var(--line);
@@ -319,7 +324,7 @@
       <button class="tab-btn" data-tab="historial"><span class="ic">🕒</span> Historial de Actividad</button>
       <button class="tab-btn" data-tab="usuarios"><span class="ic">🔐</span> Usuarios y Accesos</button>
     </nav>
-    <div class="side-foot">Liga de Fútbol Estrellas de Barrio 2026 · Peñalolén</div>
+    <div class="side-foot">Liga de Fútbol Estrellas de Barrio 2026 · Peñalolén<br><span id="versionApp"></span></div>
   </aside>
 
   <div id="main">
@@ -370,6 +375,7 @@
     <div id="loginMsg" class="login-msg"></div>
     <button class="btn btn-primary" id="btnIngresar" style="width:100%;margin-top:6px;">Ingresar</button>
     <p class="login-foot">Si olvidó su clave, pídale al administrador que le asigne una nueva: las claves se guardan cifradas y no se pueden recuperar.</p>
+    <p class="login-foot" id="versionLogin" style="text-align:center;margin-top:6px;"></p>
   </div>
 </div>
 
@@ -647,6 +653,10 @@ function crearPartidosIniciales(equipos){
    ============================================================================ */
 
 var CAUSALES_VERSION = 'ifab-2026-27';
+
+/* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
+   navegador está mostrando la versión publicada o una copia guardada en caché. */
+var APP_VERSION = 'v2026.09.10-1';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -980,6 +990,9 @@ function renderCurrentTab(){
 }
 function renderAll(){
   Object.keys(RENDERERS).forEach(function(k){ RENDERERS[k](); });
+  /* Los permisos se vuelven a aplicar en cada render: así ninguna pestaña
+     restringida reaparece tras una sincronización remota o un cambio de datos. */
+  if (typeof aplicarPermisosUI === 'function' && SESION) aplicarPermisosUI();
   scheduleSave();
 }
 
@@ -1123,6 +1136,11 @@ function formModal(opts){
               allow read: if true;
               allow write: if true;
             }
+            // Firmas de acreditación: un documento por partido
+            match /estrellas2026_firmas/{partidoId} {
+              allow read: if true;
+              allow write: if true;
+            }
           }
         }
       (Esto deja el documento abierto a cualquiera con el enlace, igual que
@@ -1179,6 +1197,7 @@ function initFirebasePersistence(){
       if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
       var db = firebase.firestore();
       FIREBASE_DOC_REF = db.collection(FIREBASE_COLECCION).doc(FIREBASE_DOCUMENTO);
+      FIRMAS_DB = db;   // las firmas viven en su propia colección, un documento por partido
       FIREBASE_READY = true;
       iniciarEscuchaRemota();
       resolve(true);
@@ -2048,13 +2067,17 @@ function renderPlanillaLado(matchId, teamId, lado){
       '<td><input type="number" class="num-input dorsal-input" data-match="'+matchId+'" data-lado="'+lado+'" data-jugador="'+j.id+'" value="'+entry.dorsal+'"></td>' +
       '<td>' + escapeHtml(j.nombre) + '</td>' +
       '<td class="muted" style="font-size:11.5px;">' + escapeHtml(j.cargo) + '</td>' +
+      celdaFirma(matchId, j.id, entry.asiste) +
     '</tr>';
-  }).join('') || '<tr><td colspan="4" class="empty-hint">Este equipo aún no tiene jugadores registrados.</td></tr>';
+  }).join('') || '<tr><td colspan="5" class="empty-hint">Este equipo aún no tiene jugadores registrados.</td></tr>';
+  var acred = resumenAcreditacion(matchId, teamId, lado);
 
   return '<div class="card">' +
     '<div class="card-head"><h3>' + teamLogoHtml(equipo) + ' ' + escapeHtml(equipo ? equipo.nombre : '—') + '</h3>' +
-    '<span class="muted" style="font-size:12px;">' + jugadores.filter(function(j){return (planilla[lado][j.id]||{}).asiste;}).length + ' asisten</span></div>' +
-    '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Asiste</th><th>Dorsal</th><th>Nombre</th><th>Cargo</th></tr></thead>' +
+    '<span class="muted" style="font-size:12px;">' + jugadores.filter(function(j){return (planilla[lado][j.id]||{}).asiste;}).length + ' asisten · ' +
+      '<b class="' + (acred.asisten && acred.firmados === acred.asisten ? 'txt-green' : '') + '">' +
+      acred.firmados + '/' + acred.asisten + ' acreditados</b></span></div>' +
+    '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Asiste</th><th>Dorsal</th><th>Nombre</th><th>Cargo</th><th>Acreditación</th></tr></thead>' +
     '<tbody>' + rows + '</tbody></table></div>' +
     '<form class="add-player-form" data-match="'+matchId+'" data-lado="'+lado+'" data-team="'+teamId+'" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
       '<div class="field"><label>Nombre nuevo jugador</label><input class="txt-input ap-nombre" placeholder="Nombre completo"></div>' +
@@ -2100,10 +2123,35 @@ function renderPlanillaBody(){
       '(dependen de la Tabla de Posiciones). Complete la fase de grupos primero.</div></div>';
     return;
   }
-  body.innerHTML = '<div class="grid-2">' +
+  /* Las firmas de este partido viven en su propio documento: se cargan una vez
+     y luego se redibuja con ellas ya disponibles. */
+  if (!FIRMAS_CARGADAS[p.id]){
+    body.innerHTML = '<div class="card"><div class="empty-hint">Cargando acreditaciones…</div></div>';
+    cargarFirmas(p.id).then(function(){
+      if (PLANILLA_SELECTED_MATCH === p.id) renderPlanillaBody();
+    });
+    return;
+  }
+
+  var faltan = jugadoresPorAcreditar(p.id);
+  body.innerHTML =
+    '<div class="card"><div class="card-head"><div><h3>Acreditación del partido</h3>' +
+      '<p class="desc" style="margin:2px 0 0;">Cada jugador firma con el dedo junto a su nombre. Se registra la hora y ' +
+      'el usuario que recibió la firma. Reemplaza la firma en la planilla impresa.</p></div>' +
+      '<div class="row-flex">' +
+        '<span class="pill ' + (faltan ? 'pill-gold' : 'pill-green') + '">' +
+          (faltan ? faltan + ' por acreditar' : 'Todos acreditados') + '</span>' +
+        '<button class="btn btn-ghost btn-xs" id="btnImprimirAcred">🖨️ Hoja de acreditación</button>' +
+      '</div>' +
+    '</div></div>' +
+    '<div class="grid-2">' +
     renderPlanillaLado(p.id, t.localId, 'local') +
     renderPlanillaLado(p.id, t.visitaId, 'visita') +
   '</div>';
+
+  initFirmasEventos(body);
+  var btnAcred = document.getElementById('btnImprimirAcred');
+  if (btnAcred) btnAcred.addEventListener('click', function(){ imprimirAcreditacion(p.id); });
 
   body.querySelectorAll('.asiste-chk').forEach(function(chk){
     chk.addEventListener('change', function(){
@@ -3401,6 +3449,325 @@ function pedirSuspensionLibre(valorActual, alConfirmar, alCancelar){
   });
 }
 
+/* ---- ui_firmas.js ---- */
+/* ============================================================================
+   ACREDITACION POR FIRMA DIGITAL
+
+   Reemplaza la firma manuscrita en la planilla impresa: cada jugador firma con
+   el dedo en la pantalla junto a su nombre, y queda registrada la hora exacta y
+   qué usuario de la mesa tomó la firma.
+
+   ALMACENAMIENTO SEPARADO — IMPORTANTE:
+   Las firmas NO viajan en el estado principal del campeonato. Un documento de
+   Firestore admite hasta 1 MB y una firma pesa unos 4 KB: con 40 firmas por
+   partido y 37 partidos se superaría el límite y se rompería el guardado de
+   todo lo demás. Por eso cada partido guarda sus firmas en su propio documento
+   de la colección "estrellas2026_firmas", que se carga solo cuando la mesa abre
+   ese partido. Si Firestore no está configurado, se usa el almacenamiento local
+   del navegador, con el límite obvio de que no se comparte entre dispositivos.
+   ============================================================================ */
+
+var FIREBASE_FIRMAS_COL = 'estrellas2026_firmas';
+var FIRMAS_DB = null;                 // referencia a firestore(), si está disponible
+var FIRMAS_CACHE = {};                // { partidoId: { jugadorId: {img, ts, autor} } }
+var FIRMAS_CARGADAS = {};             // partidoId -> true cuando ya se leyó del servidor
+var FIRMAS_GUARDANDO = {};            // partidoId -> timeout pendiente
+
+function firmasClaveLocal(matchId){ return 'ebdb2026_firmas_' + matchId; }
+
+function firmasDe(matchId){
+  if (!FIRMAS_CACHE[matchId]) FIRMAS_CACHE[matchId] = {};
+  return FIRMAS_CACHE[matchId];
+}
+
+function cargarFirmas(matchId){
+  if (!matchId) return Promise.resolve({});
+  if (FIRMAS_CARGADAS[matchId]) return Promise.resolve(firmasDe(matchId));
+
+  /* Copia local primero: si no hay internet, la mesa igual ve lo firmado aquí */
+  try {
+    var local = localStorage.getItem(firmasClaveLocal(matchId));
+    if (local) FIRMAS_CACHE[matchId] = JSON.parse(local);
+  } catch (e) { /* sin almacenamiento local */ }
+
+  if (!FIRMAS_DB){
+    FIRMAS_CARGADAS[matchId] = true;
+    return Promise.resolve(firmasDe(matchId));
+  }
+  return FIRMAS_DB.collection(FIREBASE_FIRMAS_COL).doc(matchId).get().then(function(snap){
+    if (snap.exists){
+      var raw = snap.data();
+      if (raw && raw.json){
+        try { FIRMAS_CACHE[matchId] = JSON.parse(raw.json); } catch (e) { /* deja lo local */ }
+      }
+    }
+    FIRMAS_CARGADAS[matchId] = true;
+    return firmasDe(matchId);
+  }).catch(function(err){
+    console.error('No se pudieron cargar las firmas del partido:', err);
+    FIRMAS_CARGADAS[matchId] = true;
+    return firmasDe(matchId);
+  });
+}
+
+function guardarFirmas(matchId){
+  var json = JSON.stringify(firmasDe(matchId));
+  try { localStorage.setItem(firmasClaveLocal(matchId), json); } catch (e) { /* cuota llena */ }
+  if (!FIRMAS_DB) return;
+  clearTimeout(FIRMAS_GUARDANDO[matchId]);
+  FIRMAS_GUARDANDO[matchId] = setTimeout(function(){
+    FIRMAS_DB.collection(FIREBASE_FIRMAS_COL).doc(matchId).set({
+      json: json,
+      actualizado: new Date().toISOString(),
+      partido: matchId
+    }).catch(function(err){
+      console.error('No se pudieron guardar las firmas:', err);
+      toast('No se pudo guardar la firma en línea. Quedó en este dispositivo.', true);
+    });
+  }, 600);
+}
+
+/* --- Lienzo de firma ------------------------------------------------------- */
+function abrirFirmaJugador(matchId, jugadorId){
+  var j = getJugador(STATE, jugadorId);
+  var p = getPartido(STATE, matchId);
+  if (!j || !p) return;
+  var firmas = firmasDe(matchId);
+  var previa = firmas[jugadorId];
+
+  var root = document.getElementById('modalRoot');
+  var wrap = document.createElement('div');
+  wrap.className = 'modal-overlay';
+  wrap.innerHTML =
+    '<div class="modal" style="max-width:520px;">' +
+      '<h3>Acreditación — ' + escapeHtml(j.nombre) + '</h3>' +
+      '<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px;">' +
+        'Partido N°' + p.numero + ' · ' + escapeHtml(p.jornada) + '. Firme con el dedo dentro del recuadro. ' +
+        'Quedará registrada la hora y el usuario que tomó la firma.</p>' +
+      (previa ? '<p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Ya firmó el ' +
+        fmtDateEs((previa.ts || '').slice(0,10)) + ' a las ' + (previa.ts || '').slice(11,16) +
+        ', ante ' + escapeHtml(previa.autor || '—') + '. Si vuelve a firmar, se reemplaza la anterior.</p>' : '') +
+      '<div class="firma-box"><canvas id="firmaCanvas" width="960" height="320"></canvas>' +
+        '<span class="firma-linea"></span></div>' +
+      '<div class="modal-actions">' +
+        '<button class="btn btn-ghost" data-act="cancel">Cancelar</button>' +
+        '<button class="btn btn-ghost" data-act="limpiar">Borrar trazo</button>' +
+        '<button class="btn btn-primary" data-act="ok">Guardar firma</button>' +
+      '</div>' +
+    '</div>';
+  root.appendChild(wrap);
+
+  var canvas = wrap.querySelector('#firmaCanvas');
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#0b1220';
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  var dibujando = false, hayTrazo = false, ultimo = null;
+  function punto(ev){
+    var r = canvas.getBoundingClientRect();
+    var t = (ev.touches && ev.touches[0]) ? ev.touches[0] : ev;
+    return {
+      x: (t.clientX - r.left) * (canvas.width / r.width),
+      y: (t.clientY - r.top) * (canvas.height / r.height)
+    };
+  }
+  function inicio(ev){ ev.preventDefault(); dibujando = true; ultimo = punto(ev); }
+  function mover(ev){
+    if (!dibujando) return;
+    ev.preventDefault();
+    var q = punto(ev);
+    ctx.beginPath(); ctx.moveTo(ultimo.x, ultimo.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+    ultimo = q; hayTrazo = true;
+  }
+  function fin(){ dibujando = false; }
+  canvas.addEventListener('mousedown', inicio);
+  canvas.addEventListener('mousemove', mover);
+  window.addEventListener('mouseup', fin);
+  canvas.addEventListener('touchstart', inicio, { passive: false });
+  canvas.addEventListener('touchmove', mover, { passive: false });
+  canvas.addEventListener('touchend', fin);
+
+  function cerrar(){
+    window.removeEventListener('mouseup', fin);
+    wrap.remove();
+  }
+
+  wrap.addEventListener('click', function(e){
+    var act = e.target.getAttribute && e.target.getAttribute('data-act');
+    if (e.target === wrap || act === 'cancel'){ cerrar(); return; }
+    if (act === 'limpiar'){
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      hayTrazo = false;
+      return;
+    }
+    if (act === 'ok'){
+      if (!hayTrazo){ toast('Falta la firma: trace dentro del recuadro.', true); return; }
+      /* Se guarda reducida a 360 px de ancho en JPEG: unos 4 KB por firma */
+      var chico = document.createElement('canvas');
+      chico.width = 360; chico.height = 120;
+      var cctx = chico.getContext('2d');
+      cctx.fillStyle = '#ffffff';
+      cctx.fillRect(0, 0, chico.width, chico.height);
+      cctx.drawImage(canvas, 0, 0, chico.width, chico.height);
+      firmasDe(matchId)[jugadorId] = {
+        img: chico.toDataURL('image/jpeg', 0.7),
+        ts: new Date().toISOString(),
+        autor: getAutor()
+      };
+      guardarFirmas(matchId);
+      registrarAvanceAcreditacion(matchId);
+      cerrar();
+      renderPlanillaBody();
+      toast('Firma registrada.');
+    }
+  });
+}
+
+function verFirmaJugador(matchId, jugadorId){
+  var f = firmasDe(matchId)[jugadorId];
+  var j = getJugador(STATE, jugadorId);
+  if (!f || !j) return;
+  confirmModal({
+    title: 'Firma de ' + j.nombre,
+    html: '<p style="font-size:12.5px;color:var(--muted);">Firmada el ' + fmtDateEs((f.ts||'').slice(0,10)) +
+          ' a las ' + (f.ts||'').slice(11,16) + ', ante ' + escapeHtml(f.autor || '—') + '.</p>' +
+          '<div class="firma-box" style="height:120px;"><img src="' + f.img + '" alt="Firma" style="width:100%;height:100%;object-fit:contain;"></div>',
+    okText: 'Cerrar', cancelText: false
+  });
+}
+
+function borrarFirmaJugador(matchId, jugadorId){
+  var j = getJugador(STATE, jugadorId);
+  confirmModal({
+    title: 'Anular firma',
+    html: '<p>¿Anular la firma de <strong>' + escapeHtml(j ? j.nombre : '') + '</strong>? Deberá firmar de nuevo para quedar acreditado.</p>',
+    okText: 'Anular', okClass: 'btn-danger',
+    onOk: function(){
+      delete firmasDe(matchId)[jugadorId];
+      guardarFirmas(matchId);
+      var p = getPartido(STATE, matchId);
+      logActivity('Firma de acreditación anulada', (j ? j.nombre : '') + ' — Partido N°' + (p ? p.numero : '?'));
+      renderAll();
+      renderPlanillaBody();
+      toast('Firma anulada.');
+    }
+  });
+}
+
+/* Deja constancia del avance sin llenar el historial con una línea por jugador:
+   solo la primera firma del partido y el momento en que se completa. */
+function registrarAvanceAcreditacion(matchId){
+  var p = getPartido(STATE, matchId);
+  if (!p) return;
+  var firmas = firmasDe(matchId);
+  var total = Object.keys(firmas).length;
+  var pendientes = jugadoresPorAcreditar(matchId);
+  if (total === 1){
+    logActivity('Acreditación iniciada', 'Partido N°' + p.numero + ' — ' + p.jornada);
+  } else if (pendientes === 0){
+    logActivity('Acreditación completa', 'Partido N°' + p.numero + ' — ' + total + ' firma(s)');
+  }
+  scheduleSave();
+}
+
+/* Cuántos asistentes del partido siguen sin firmar */
+function jugadoresPorAcreditar(matchId){
+  var p = getPartido(STATE, matchId);
+  if (!p) return 0;
+  var planilla = (STATE.planillas || {})[matchId];
+  if (!planilla) return 0;
+  var firmas = firmasDe(matchId);
+  var faltan = 0;
+  ['local','visita'].forEach(function(lado){
+    Object.keys(planilla[lado] || {}).forEach(function(jid){
+      if (planilla[lado][jid] && planilla[lado][jid].asiste && !firmas[jid]) faltan++;
+    });
+  });
+  return faltan;
+}
+
+function resumenAcreditacion(matchId, teamId, lado){
+  var planilla = (STATE.planillas || {})[matchId] || {};
+  var firmas = firmasDe(matchId);
+  var asisten = 0, firmados = 0;
+  Object.keys(planilla[lado] || {}).forEach(function(jid){
+    if (!planilla[lado][jid] || !planilla[lado][jid].asiste) return;
+    var j = getJugador(STATE, jid);
+    if (!j || j.teamId !== teamId) return;
+    asisten++;
+    if (firmas[jid]) firmados++;
+  });
+  return { asisten: asisten, firmados: firmados };
+}
+
+/* Celda de acreditación de cada jugador dentro de la planilla */
+function celdaFirma(matchId, jugadorId, asiste){
+  if (!asiste) return '<td class="muted" style="font-size:11px;">—</td>';
+  var f = firmasDe(matchId)[jugadorId];
+  if (f){
+    return '<td style="white-space:nowrap;">' +
+      '<button class="btn btn-ghost btn-xs ver-firma" data-match="' + matchId + '" data-jugador="' + jugadorId + '" ' +
+        'title="Firmada a las ' + (f.ts||'').slice(11,16) + ' ante ' + escapeHtml(f.autor||'') + '">✅ ' + (f.ts||'').slice(11,16) + '</button>' +
+      (puedeEditarAlgo() ? ' <button class="btn btn-ghost btn-xs del-firma" data-match="' + matchId + '" data-jugador="' + jugadorId + '" title="Anular firma">✕</button>' : '') +
+    '</td>';
+  }
+  if (!puedeEditarAlgo()) return '<td class="muted" style="font-size:11px;">Sin firmar</td>';
+  return '<td><button class="btn btn-ghost btn-xs firmar-btn" data-match="' + matchId + '" data-jugador="' + jugadorId + '">✍️ Firmar</button></td>';
+}
+
+function initFirmasEventos(body){
+  body.querySelectorAll('.firmar-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){ abrirFirmaJugador(btn.dataset.match, btn.dataset.jugador); });
+  });
+  body.querySelectorAll('.ver-firma').forEach(function(btn){
+    btn.addEventListener('click', function(){ verFirmaJugador(btn.dataset.match, btn.dataset.jugador); });
+  });
+  body.querySelectorAll('.del-firma').forEach(function(btn){
+    btn.addEventListener('click', function(){ borrarFirmaJugador(btn.dataset.match, btn.dataset.jugador); });
+  });
+}
+
+/* Hoja de acreditación imprimible, por si se necesita respaldo en papel */
+function imprimirAcreditacion(matchId){
+  var p = getPartido(STATE, matchId);
+  if (!p) return;
+  var t = matchRowTeams(p);
+  var planilla = (STATE.planillas || {})[matchId] || {};
+  var firmas = firmasDe(matchId);
+
+  function bloque(teamId, lado){
+    var equipo = getEquipo(STATE, teamId);
+    var filas = Object.keys(planilla[lado] || {}).filter(function(jid){
+      var j = getJugador(STATE, jid);
+      return planilla[lado][jid].asiste && j && j.teamId === teamId;
+    }).map(function(jid){
+      var j = getJugador(STATE, jid);
+      var f = firmas[jid];
+      return '<tr><td>' + (planilla[lado][jid].dorsal || '') + '</td><td>' + escapeHtml(j.nombre) + '</td>' +
+        '<td>' + escapeHtml(j.rut || '') + '</td>' +
+        '<td>' + (f ? '<img src="' + f.img + '" style="height:34px;">' : '') + '</td>' +
+        '<td>' + (f ? (f.ts || '').slice(11,16) : 'Sin firmar') + '</td></tr>';
+    }).join('');
+    return '<h2>' + escapeHtml(equipo ? equipo.nombre : '—') + '</h2>' +
+      '<table><thead><tr><th>Dorsal</th><th>Jugador</th><th>RUT</th><th>Firma</th><th>Hora</th></tr></thead><tbody>' +
+      (filas || '<tr><td colspan="5">Sin jugadores acreditados.</td></tr>') + '</tbody></table>';
+  }
+
+  var area = document.getElementById('printArea');
+  area.innerHTML =
+    '<h1>Acreditación de jugadores — Liga de Fútbol Estrellas de Barrio 2026</h1>' +
+    '<p>Partido N°' + p.numero + ' · ' + escapeHtml(p.jornada) + ' · ' + (p.dia ? fmtDateEs(p.dia) : '') + ' ' + (p.hora || '') + '</p>' +
+    bloque(t.localId, 'local') + bloque(t.visitaId, 'visita') +
+    '<p style="margin-top:18px;font-size:11px;">Documento generado el ' + fmtDateEs(isoDate(new Date())) +
+    '. Las firmas fueron tomadas digitalmente en la plataforma, con registro de hora y del usuario que las recibió.</p>';
+  window.print();
+}
+
 /* ---- ui_historial_club.js ---- */
 /* ============================================================================
    TAB: HISTORIAL POR CLUB
@@ -4479,6 +4846,10 @@ document.addEventListener('DOMContentLoaded', async function(){
   initMenuMovil();
   initIO();
   initSesionUI();
+  var elVer = document.getElementById('versionApp');
+  if (elVer) elVer.textContent = 'Versión ' + APP_VERSION;
+  var elVerLogin = document.getElementById('versionLogin');
+  if (elVerLogin) elVerLogin.textContent = 'Versión ' + APP_VERSION;
   initImportarNomina();
   initImportarCausales();
   setSaveStatus('sinLinea');
