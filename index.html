@@ -616,36 +616,106 @@ function crearPartidosIniciales(equipos){
   return partidos;
 }
 
+/* ============================================================================
+   TABLA DE CAUSALES
+
+   Las infracciones disciplinarias siguen la Regla 12 (Faltas y conducta
+   incorrecta) de las REGLAS DE JUEGO 2026/27 del IFAB, en vigor desde el
+   1 de julio de 2026, que es el texto que aplican los árbitros. Amonestación
+   (tarjeta amarilla) y expulsión (tarjeta roja) son listas distintas y así
+   quedan separadas aquí.
+
+   Los montos y las fechas de suspensión provienen de las Bases Liga Estrellas
+   de Barrio Peñalolén 2026 cuando existe un equivalente; el artículo de cada
+   fila indica el origen: "R12" es la Regla 12 del IFAB y el número suelto es el
+   artículo de las bases. Donde las bases no fijan monto, queda en 0 con la
+   marca "monto a definir": lo resuelve la Comisión Organizadora.
+
+   Se omiten las infracciones referidas al VAR (entrar en el área de revisión o
+   en la sala de vídeo, gesto de revisión) porque la liga no usa videoarbitraje.
+
+   El campo "tarjeta" permite que el Acta ofrezca solo las causales que
+   corresponden: amarilla, roja, o ninguna de las dos en el caso de las
+   infracciones administrativas del club.
+   ============================================================================ */
+
+var CAUSALES_VERSION = 'ifab-2026-27';
+
 var CAUSALES = [
-  { causal: 'Tarjetas y disciplina en cancha', detalles: [
-    { detalle: 'No uso de canilleras (tarjeta amarilla)', multa: 5000, partidos: 0, articulo: '1.4' },
-    { detalle: 'Malograr una ocasión manifiesta de gol', multa: 10000, partidos: 1, articulo: '4.24' },
-    { detalle: 'Juego brusco o fuerza desmedida', multa: 15000, partidos: 1, articulo: '4.24' },
-    { detalle: 'Conducta antideportiva (amenazas/insultos a rival, jueces u organización)', multa: 20000, partidos: 1, articulo: '4.24' },
-    { detalle: 'Conducta violenta: golpe al rival sin balón', multa: 25000, partidos: 1, articulo: '4.24' },
-    { detalle: 'Doble amonestación (2 amarillas en el partido)', multa: 0, partidos: 1, articulo: '4.14' },
-    { detalle: 'Acumulación de 5 amarillas en fechas distintas', multa: 0, partidos: 1, articulo: '4.13' },
-    { detalle: 'Uso de estoperoles de aluminio/intercambiables (roja directa)', multa: 0, partidos: 0, articulo: '2.9' }
+  { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
+    { detalle: 'Conducta antideportiva', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Conducta antideportiva: falta temeraria sancionable con libre directo', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Conducta antideportiva: simulación (fingir una lesión o una infracción)', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Conducta antideportiva: interferir o evitar un ataque prometedor', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Conducta antideportiva: mano para impedir un ataque prometedor', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Conducta antideportiva: mano al intentar marcar un gol', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Conducta antideportiva: evitar ocasión manifiesta de gol disputando el balón, con penal señalado', multa: 10000, partidos: 1, articulo: 'R12 · bases 4.24' },
+    { detalle: 'Conducta antideportiva: evitar gol u ocasión manifiesta con mano involuntaria, con penal señalado', multa: 10000, partidos: 1, articulo: 'R12 · bases 4.24' },
+    { detalle: 'Conducta antideportiva: falta de respeto al espíritu del fútbol', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Conducta antideportiva: distraer con palabras o comentarios a un adversario', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Conducta antideportiva: jugar sin canilleras', multa: 5000, partidos: 0, articulo: 'R12 · bases 1.4' },
+    { detalle: 'Mostrar desaprobación con palabras o acciones', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Retrasar la reanudación del juego', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'No respetar la distancia reglamentaria en tiro libre, saque de banda, esquina o balón a tierra', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Entrar, volver a entrar o abandonar el terreno de juego sin permiso del árbitro', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Infringir reiteradamente las Reglas de Juego', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Celebración: quitarse la camiseta o cubrirse la cabeza con ella', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Celebración: actuar de forma provocadora o exaltada', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Celebración: trepar vallas o acercarse a los espectadores generando riesgo', multa: 0, partidos: 0, articulo: 'R12' }
   ]},
-  { causal: 'Agresiones y conducta violenta grave', detalles: [
-    { detalle: 'Golpe de puño, puntapié o patada', multa: 50000, partidos: 0, articulo: '4.7' },
-    { detalle: 'Agresión física con lesión comprobada (a favor del agredido)', multa: 40000, partidos: 0, articulo: '4.16' },
-    { detalle: 'Gestos obscenos o amenazas explícitas a árbitros/organización', multa: 20000, partidos: 0, articulo: '4.15' },
-    { detalle: 'Golpear a jueces u organizadores', multa: 150000, partidos: 0, articulo: '4.24' },
-    { detalle: 'Barristas: agresión o escupitajos a árbitros/organización', multa: 150000, partidos: 0, articulo: '4.24' },
-    { detalle: 'Barristas: agresiones entre barras', multa: 150000, partidos: 0, articulo: '4.24' },
-    { detalle: 'Barristas: invasión a cancha o camarines', multa: 150000, partidos: 0, articulo: '4.24' }
+
+  { causal: 'Expulsión — tarjeta roja (Regla 12)', tarjeta: 'roja', detalles: [
+    { detalle: 'Juego brusco y grave (falta de extrema dureza, fuerza excesiva)', multa: 15000, partidos: 1, articulo: 'R12 · bases 4.24' },
+    { detalle: 'Conducta violenta', multa: 25000, partidos: 1, articulo: 'R12 · bases 4.24' },
+    { detalle: 'Conducta violenta: golpe de puño, puntapié o patada', multa: 50000, partidos: 1, articulo: 'R12 · bases 4.7' },
+    { detalle: 'Conducta violenta: agresión con lesión comprobada', multa: 40000, partidos: 1, articulo: 'R12 · bases 4.16' },
+    { detalle: 'Conducta violenta: golpear a jueces u organizadores', multa: 150000, partidos: 1, articulo: 'R12 · bases 4.24' },
+    { detalle: 'Escupir o morder a alguien', multa: 0, partidos: 1, articulo: 'R12 · monto a definir' },
+    { detalle: 'Emplear lenguaje o actuar de modo ofensivo, insultante o humillante', multa: 20000, partidos: 1, articulo: 'R12 · bases 4.24' },
+    { detalle: 'Gestos obscenos o amenazas explícitas a árbitros u organización', multa: 20000, partidos: 1, articulo: 'R12 · bases 4.15' },
+    { detalle: 'Evitar un gol o una ocasión manifiesta de gol con mano voluntaria', multa: 10000, partidos: 1, articulo: 'R12 · bases 4.24' },
+    { detalle: 'Evitar un gol o una ocasión manifiesta de gol con una infracción sin disputar el balón (agarrar, empujar, arrastrar)', multa: 10000, partidos: 1, articulo: 'R12 · bases 4.24' },
+    { detalle: 'Recibir una segunda amonestación en el mismo partido (doble amarilla)', multa: 0, partidos: 1, articulo: 'R12 · bases 4.14' },
+    { detalle: 'Uso de estoperoles de aluminio o intercambiables', multa: 0, partidos: 1, articulo: 'bases 2.9' },
+    { detalle: 'Abandonar el terreno de juego en señal de protesta (opción de competición)', multa: 0, partidos: 1, articulo: 'R12 · monto a definir' },
+    { detalle: 'Ordenar o exhortar a otros a abandonar el terreno en protesta (opción de competición)', multa: 0, partidos: 1, articulo: 'R12 · monto a definir' },
+    { detalle: 'Taparse la boca al comunicarse con un adversario de forma provocadora (opción de competición)', multa: 0, partidos: 1, articulo: 'R12 · monto a definir' }
   ]},
-  { causal: 'Infracciones administrativas del club', detalles: [
-    { detalle: 'No envío de nómina de jugadores en el plazo y formato', multa: 15000, partidos: 0, articulo: '3.2/4.20' },
-    { detalle: 'Persona delegada no entrega información al turno', multa: 0, partidos: 0, articulo: '4.10' },
-    { detalle: 'Ingreso de comida/bebestibles para la venta', multa: 50000, partidos: 0, articulo: '1.6/2.11' },
-    { detalle: 'Ingreso de menor de edad a sector jugadores (reincidencia)', multa: 20000, partidos: 0, articulo: '2.10' },
-    { detalle: 'Camiseta/uniforme irregular (por implemento)', multa: 5000, partidos: 0, articulo: '4.4' },
-    { detalle: 'Orinar en sector jugadores, banca o turno', multa: 15000, partidos: 0, articulo: '4.12' },
-    { detalle: 'Integrante del cuerpo técnico expulsado de la banca', multa: 20000, partidos: 0, articulo: '4.11' },
-    { detalle: 'Fumar sobre la carpeta de pasto sintético', multa: 75000, partidos: 0, articulo: 'Prohibiciones' },
-    { detalle: 'Daños en camarines (monto a definir por la organización)', multa: 0, partidos: 0, articulo: '4.5' }
+
+  { causal: 'Cuerpo técnico y banca (Regla 12)', tarjeta: 'ambas', detalles: [
+    { detalle: 'Amonestación: no respetar los límites del área técnica', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Amonestación: mostrar desaprobación con palabras o acciones', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Amonestación: pedir tarjeta con gestos exagerados o de manera insistente', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Amonestación: proceder de manera provocativa o exaltada', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Amonestación: retrasar la reanudación del juego', multa: 0, partidos: 0, articulo: 'R12' },
+    { detalle: 'Expulsión: integrante del cuerpo técnico expulsado de la banca', multa: 20000, partidos: 1, articulo: 'R12 · bases 4.11' },
+    { detalle: 'Expulsión: abandonar el área técnica para protestar ante los árbitros', multa: 20000, partidos: 1, articulo: 'R12 · bases 4.11' },
+    { detalle: 'Expulsión: entrar al terreno para enfrentarse a un árbitro', multa: 20000, partidos: 1, articulo: 'R12 · bases 4.11' },
+    { detalle: 'Expulsión: conducta agresiva o intimidación física (escupir, morder)', multa: 0, partidos: 1, articulo: 'R12 · monto a definir' },
+    { detalle: 'Expulsión: lanzar un objeto al terreno de juego', multa: 0, partidos: 1, articulo: 'R12 · monto a definir' },
+    { detalle: 'Expulsión: conducta violenta', multa: 25000, partidos: 1, articulo: 'R12 · bases 4.24' },
+    { detalle: 'Expulsión: recibir una segunda amonestación en el mismo partido', multa: 0, partidos: 1, articulo: 'R12 · bases 4.14' }
+  ]},
+
+  { causal: 'Acumulación de tarjetas (bases 2026)', tarjeta: null, detalles: [
+    { detalle: 'Acumulación de 5 amarillas en fechas distintas', multa: 0, partidos: 1, articulo: 'bases 4.13' }
+  ]},
+
+  { causal: 'Barra y público (bases 2026)', tarjeta: null, detalles: [
+    { detalle: 'Barristas: agresión o escupitajos a árbitros u organización', multa: 150000, partidos: 0, articulo: 'bases 4.24' },
+    { detalle: 'Barristas: agresiones entre barras', multa: 150000, partidos: 0, articulo: 'bases 4.24' },
+    { detalle: 'Barristas: invasión a cancha o camarines', multa: 150000, partidos: 0, articulo: 'bases 4.24' }
+  ]},
+
+  { causal: 'Infracciones administrativas del club (bases 2026)', tarjeta: null, detalles: [
+    { detalle: 'No envío de nómina de jugadores en el plazo y formato', multa: 15000, partidos: 0, articulo: 'bases 3.2/4.20' },
+    { detalle: 'Persona delegada no entrega información al turno', multa: 0, partidos: 0, articulo: 'bases 4.10' },
+    { detalle: 'Ingreso de comida o bebestibles para la venta', multa: 50000, partidos: 0, articulo: 'bases 1.6/2.11' },
+    { detalle: 'Ingreso de menor de edad a sector jugadores (reincidencia)', multa: 20000, partidos: 0, articulo: 'bases 2.10' },
+    { detalle: 'Camiseta o uniforme irregular (por implemento)', multa: 5000, partidos: 0, articulo: 'bases 4.4' },
+    { detalle: 'Orinar en sector jugadores, banca o turno', multa: 15000, partidos: 0, articulo: 'bases 4.12' },
+    { detalle: 'Fumar sobre la carpeta de pasto sintético', multa: 75000, partidos: 0, articulo: 'bases Prohibiciones' },
+    { detalle: 'Daños en camarines (monto a definir por la organización)', multa: 0, partidos: 0, articulo: 'bases 4.5' }
   ]}
 ];
 
@@ -662,7 +732,8 @@ function buildInitialState(){
     planillas: {},   // matchId -> { local:{[playerId]:{asiste,dorsal}}, visita:{...} }
     actas: {},       // matchId -> { acciones:[{id,lado,playerId,tipo,minuto,causal,detalle,multa,enviadaSanciones}], resultadoAplicado:bool, rojasEnviadas:[] }
     sanciones: [],
-    causales: CAUSALES,
+    causales: JSON.parse(JSON.stringify(CAUSALES)),
+    causalesVersion: CAUSALES_VERSION,
     usuarios: crearUsuariosIniciales(),
     historial: []   // [{id, ts, autor, accion, detalle}] — quién hizo qué y cuándo
   };
@@ -1104,7 +1175,15 @@ function normalizarEstadoCargado(data){
   data.planillas = data.planillas || {};
   data.actas = data.actas || {};
   data.sanciones = data.sanciones || [];
-  data.causales = data.causales && data.causales.length ? data.causales : CAUSALES;
+  data.causales = data.causales && data.causales.length ? data.causales : JSON.parse(JSON.stringify(CAUSALES));
+  /* Si el estado guardado traía la tabla antigua y nadie la personalizó (no hay
+     versión marcada), se actualiza a la de la Regla 12 IFAB 2026/27. Una tabla
+     importada por el usuario no se toca. */
+  if (!data.causalesVersion){
+    var eraLaVieja = data.causales.some(function(c){ return c.causal === 'Tarjetas y disciplina en cancha'; });
+    if (eraLaVieja) data.causales = JSON.parse(JSON.stringify(CAUSALES));
+    data.causalesVersion = eraLaVieja ? CAUSALES_VERSION : 'propia';
+  }
   data.usuarios = data.usuarios && data.usuarios.length ? data.usuarios : crearUsuariosIniciales();
   data.historial = data.historial || [];
   return data;
@@ -1828,6 +1907,24 @@ function renderSanciones(){
     });
   });
 
+  var btnRestCausales = document.getElementById('btnRestaurarCausales');
+  if (btnRestCausales) btnRestCausales.addEventListener('click', function(){
+    confirmModal({
+      title: 'Restaurar tabla oficial',
+      html: '<p>Se reemplazará la tabla de causales por la que trae la plataforma: amonestaciones y expulsiones ' +
+            'según la Regla 12 de las Reglas de Juego 2026/27 del IFAB, con los montos de las bases 2026.</p>' +
+            '<p>Las sanciones ya registradas no se modifican. Si había importado una tabla propia, se perderá.</p>',
+      okText: 'Restaurar',
+      onOk: function(){
+        STATE.causales = JSON.parse(JSON.stringify(CAUSALES));
+        STATE.causalesVersion = CAUSALES_VERSION;
+        logActivity('Tabla de causales restaurada', 'Regla 12 IFAB 2026/27 + bases 2026');
+        renderAll();
+        toast('Tabla oficial restaurada.');
+      }
+    });
+  });
+
   var btnFmtCausales = document.getElementById('btnFormatoCausales');
   if (btnFmtCausales) btnFmtCausales.addEventListener('click', descargarFormatoCausales);
   var btnImpCausales = document.getElementById('btnImportCausales');
@@ -2379,6 +2476,20 @@ function renderActaBody(){
   function refreshTipoUI(){
     var showCausal = tipoSelect.value === 'amarilla' || tipoSelect.value === 'roja';
     causalWrap.classList.toggle('hidden', !showCausal);
+    if (showCausal) filtrarCausalesPorTarjeta(tipoSelect.value);
+  }
+  /* Amonestación y expulsión son listas distintas (Regla 12): el desplegable
+     ofrece solo las causales que corresponden a la tarjeta mostrada. */
+  function filtrarCausalesPorTarjeta(tipo){
+    var etiquetaTipo = tipo === 'amarilla' ? 'amonestaciones' : 'expulsiones';
+    var grupos = STATE.causales.filter(function(c){ return c.tarjeta === tipo || c.tarjeta === 'ambas'; });
+    /* Si la tabla cargada no distingue tarjetas (por ejemplo una importada sin
+       la columna TARJETA), se ofrecen todas las causales. */
+    if (!grupos.length) grupos = STATE.causales;
+    accCausal.innerHTML = '<option value="">— seleccione (' + etiquetaTipo + ') —</option>' + grupos.map(function(c){
+      return '<option value="' + escapeHtml(c.causal) + '">' + escapeHtml(c.causal) + '</option>';
+    }).join('');
+    accDetalle.innerHTML = '<option value="">— elija causal —</option>';
   }
   form.lado.addEventListener('change', refreshDorsales);
   dorsalSelect.addEventListener('change', refreshNombre);
@@ -3285,6 +3396,7 @@ function colsDeCausales(fila){
     else if (t.indexOf('multa') === 0 || t === 'monto' || t === 'valor') mapa.multa = col;
     else if (t.indexOf('sancion') === 0 || t.indexOf('fecha') === 0 || t.indexOf('partido') === 0 || t.indexOf('suspension') === 0) mapa.partidos = col;
     else if (t.indexOf('articulo') === 0 || t === 'art' || t === 'art.') mapa.articulo = col;
+    else if (t.indexOf('tarjeta') === 0 || t === 'tipo' || t === 'color') mapa.tarjeta = col;
   });
   return mapa;
 }
@@ -3323,7 +3435,14 @@ function armarCausales(filasArr){
     if (!causal){ descartadas++; continue; }
     ultimaCausal = causal;
     if (!porNombre[causal]){
-      porNombre[causal] = { causal: causal, detalles: [] };
+      var tj = normTexto(valor(fila, 'tarjeta'));
+      var tarjeta = null;
+      if (tj.indexOf('amarilla') !== -1 || tj === 'a') tarjeta = 'amarilla';
+      else if (tj.indexOf('roja') !== -1 || tj === 'r') tarjeta = 'roja';
+      else if (tj.indexOf('ambas') !== -1 || tj.indexOf('las dos') !== -1) tarjeta = 'ambas';
+      else if (!tj) tarjeta = (normTexto(causal).indexOf('amonestacion') !== -1) ? 'amarilla'
+                            : (normTexto(causal).indexOf('expulsion') !== -1 ? 'roja' : null);
+      porNombre[causal] = { causal: causal, tarjeta: tarjeta, detalles: [] };
       grupos.push(porNombre[causal]);
     }
     porNombre[causal].detalles.push({
@@ -3386,7 +3505,8 @@ async function procesarArchivoCausales(file){
   datos.grupos.forEach(function(g){
     g.detalles.slice(0, 2).forEach(function(d){
       if (muestra.length < 6){
-        muestra.push('<tr><td>' + escapeHtml(g.causal) + '</td><td>' + escapeHtml(d.detalle) + '</td><td>' +
+        muestra.push('<tr><td>' + escapeHtml(g.causal) + (g.tarjeta ? ' <span class="pill pill-muted">' + (g.tarjeta === 'amarilla' ? '🟨' : '🟥') + '</span>' : '') +
+          '</td><td>' + escapeHtml(d.detalle) + '</td><td>' +
           fmtMoney(d.multa) + '</td><td>' + (d.partidos ? d.partidos + ' fecha(s)' : '—') + '</td><td>' + escapeHtml(d.articulo || '—') + '</td></tr>');
       }
     });
@@ -3439,10 +3559,10 @@ async function procesarArchivoCausales(file){
 
 /* Formato de referencia en CSV, con la tabla vigente como ejemplo */
 function descargarFormatoCausales(){
-  var lineas = ['CAUSAL;DETALLE;MULTA;SANCION (FECHAS);ARTICULO'];
+  var lineas = ['CAUSAL;TARJETA;DETALLE;MULTA;SANCION (FECHAS);ARTICULO'];
   STATE.causales.forEach(function(g){
     g.detalles.forEach(function(d){
-      lineas.push([g.causal, d.detalle, d.multa || 0, d.partidos || 0, d.articulo || '']
+      lineas.push([g.causal, g.tarjeta || '', d.detalle, d.multa || 0, d.partidos || 0, d.articulo || '']
         .map(function(v){ return '"' + String(v).replace(/"/g, '""') + '"'; }).join(';'));
     });
   });
@@ -3471,9 +3591,12 @@ function renderCausalesCard(){
   return '<div class="card">' +
     '<div class="card-head"><div><h3>Tabla de causales</h3>' +
     '<p class="desc" style="margin:2px 0 0;">' + STATE.causales.length + ' causal(es) y ' + total + ' detalle(s). ' +
-    'Alimenta los desplegables de Causal y Detalle en esta pestaña y en el Acta, con su multa y sanción de referencia.</p></div>' +
+    'Alimenta los desplegables de Causal y Detalle en esta pestaña y en el Acta, con su multa y sanción de referencia. ' +
+    'Las amonestaciones y expulsiones siguen la Regla 12 de las Reglas de Juego 2026/27 del IFAB, vigentes desde el ' +
+    '1 de julio de 2026; los montos provienen de las bases 2026.</p></div>' +
     (esAdmin() ?
       '<div class="row-flex">' +
+        '<button class="btn btn-ghost btn-xs" id="btnRestaurarCausales">↩️ Restaurar tabla oficial</button>' +
         '<button class="btn btn-ghost btn-xs" id="btnFormatoCausales">📄 Descargar formato</button>' +
         '<button class="btn btn-primary btn-xs" id="btnImportCausales">📥 Importar causales</button>' +
       '</div>' : '') +
