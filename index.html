@@ -136,6 +136,11 @@
   .pill-green{ background:var(--green-soft); color:var(--green-dark); }
   .pill-gold{ background:var(--gold-soft); color:var(--gold-dark); }
   .pill-red{ background:var(--danger-soft); color:var(--danger); }
+  /* Enlaces dentro de tablas: N° de partido y nombre de club */
+  .link-btn{ background:none; border:none; padding:0; font:inherit; color:var(--green-dark);
+    font-weight:700; cursor:pointer; text-align:left; text-decoration:underline;
+    text-decoration-color:rgba(22,143,90,.35); text-underline-offset:3px; }
+  .link-btn:hover{ text-decoration-color:var(--green); }
   .txt-red{ color:var(--danger); }
   .txt-green{ color:var(--green-dark); }
   /* Racha de resultados en la tabla de posiciones */
@@ -311,15 +316,15 @@
       </div>
     </div>
     <nav class="tabs" id="tabsNav">
-      <button class="tab-btn active" data-tab="equipos"><span class="ic">🛡️</span> Equipos</button>
+      <button class="tab-btn active" data-tab="equipos"><span class="ic">🛡️</span> Equipos y Datos</button>
       <button class="tab-btn" data-tab="programacion"><span class="ic">📅</span> Programación y Resultados</button>
-      <button class="tab-btn" data-tab="posiciones"><span class="ic">📊</span> Tabla de Posiciones</button>
-      <button class="tab-btn" data-tab="sanciones"><span class="ic">🟥</span> Historial de Sanciones</button>
       <button class="tab-btn" data-tab="planilla"><span class="ic">📋</span> Planilla de Juego</button>
-      <button class="tab-btn" data-tab="jugadores"><span class="ic">👥</span> Listado de Jugadores</button>
+      <button class="tab-btn" data-tab="posiciones"><span class="ic">📊</span> Tabla de Posiciones</button>
       <button class="tab-btn" data-tab="goleadores"><span class="ic">⚽</span> Tabla de Goleadores</button>
-      <button class="tab-btn" data-tab="acta"><span class="ic">📝</span> Acta de Partido</button>
+      <button class="tab-btn" data-tab="sanciones"><span class="ic">🟥</span> Historial de Sanciones</button>
       <button class="tab-btn" data-tab="circular"><span class="ic">📰</span> Circular</button>
+      <!-- El plantel se abre desde Equipos y Datos: navegable, sin botón propio -->
+      <button class="tab-btn hidden" data-tab="jugadores"><span class="ic">👥</span> Plantel del club</button>
       <button class="tab-btn" data-tab="historialclub"><span class="ic">🏦</span> Historial por Club</button>
       <button class="tab-btn" data-tab="historial"><span class="ic">🕒</span> Historial de Actividad</button>
       <button class="tab-btn" data-tab="usuarios"><span class="ic">🔐</span> Usuarios y Accesos</button>
@@ -355,7 +360,6 @@
       <section class="tab-panel" id="panel-planilla"></section>
       <section class="tab-panel" id="panel-jugadores"></section>
       <section class="tab-panel" id="panel-goleadores"></section>
-      <section class="tab-panel" id="panel-acta"></section>
       <section class="tab-panel" id="panel-circular"></section>
       <section class="tab-panel" id="panel-historialclub"></section>
       <section class="tab-panel" id="panel-historial"></section>
@@ -656,7 +660,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.10-1';
+var APP_VERSION = 'v2026.09.11-2';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -952,14 +956,13 @@ function marcadorDesdeActa(state, matchId){
    ============================================================================ */
 
 var TAB_TITLES = {
-  equipos: ['Equipos', 'Los 12 equipos del campeonato — base de toda la plataforma.'],
+  equipos: ['Equipos y Datos', 'Los 12 clubes del campeonato. Toque el nombre de un club para ver su plantel.'],
   programacion: ['Programación y Resultados', 'Fase de grupos y llave de eliminación directa. Edite los goles para que todo se recalcule solo.'],
   posiciones: ['Tabla de Posiciones', 'Calculada automáticamente desde Programación.'],
   sanciones: ['Historial de Sanciones', 'Registro de tarjetas y multas según causal y detalle.'],
-  planilla: ['Planilla de Juego', 'Asistencia y dorsales por partido.'],
-  jugadores: ['Listado de Jugadores', 'Plantel por equipo con estadísticas acumuladas.'],
+  planilla: ['Planilla de Juego', 'Acreditación, asistencia y registro de todo lo ocurrido en el partido.'],
+  jugadores: ['Plantel del Club', 'Nómina del club con estadísticas acumuladas.'],
   goleadores: ['Tabla de Goleadores', 'Rankings globales del campeonato.'],
-  acta: ['Acta de Partido', 'Registro oficial de goles, autogoles, faltas y tarjetas.'],
   circular: ['Circular', 'Resumen de una jornada, listo para imprimir.'],
   historialclub: ['Historial por Club', 'Tarjetas, multas, planillas y flujo económico de cada club.'],
   historial: ['Historial de Actividad', 'Quién hizo cada acción y cuándo. Solo el administrador.'],
@@ -1389,7 +1392,10 @@ function renderEquipos(){
     var rows = equipos.map(function(e){
       return '<tr data-team="' + e.id + '">' +
         '<td>' + teamLogoHtml(e) + '</td>' +
-        '<td><input class="txt-input eq-nombre" data-id="' + e.id + '" value="' + escapeHtml(e.nombre) + '" style="width:100%;min-width:140px;"></td>' +
+        '<td style="min-width:170px;">' +
+          '<button class="link-btn ir-plantel" data-id="' + e.id + '">' + escapeHtml(e.nombre) + '</button>' +
+          (esAdmin() ? ' <button class="btn btn-ghost btn-xs eq-rename" data-id="' + e.id + '" title="Cambiar el nombre">✏️</button>' : '') +
+        '</td>' +
         '<td><input class="txt-input eq-delegado" data-id="' + e.id + '" value="' + escapeHtml(e.delegado) + '" placeholder="Nombre delegado" style="width:100%;min-width:150px;"></td>' +
         '<td><input class="txt-input eq-rut" data-id="' + e.id + '" value="' + escapeHtml(e.rut) + '" placeholder="RUT" style="width:110px;"></td>' +
         '<td><input class="txt-input eq-celular" data-id="' + e.id + '" value="' + escapeHtml(e.celular) + '" placeholder="Celular" style="width:110px;"></td>' +
@@ -1403,7 +1409,7 @@ function renderEquipos(){
       '<div class="card-head"><h3><span class="pill pill-' + g + '">GRUPO ' + g + '</span></h3>' +
       '<span class="muted" style="font-size:12px;">' + equipos.length + ' equipos</span></div>' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th></th><th>Nombre del equipo</th><th>Delegado</th><th>RUT</th><th>Celular</th><th>Correo</th><th>Escudo</th>' +
+      '<th></th><th title="Toque el nombre para ver el plantel">Nombre del equipo</th><th>Delegado</th><th>RUT</th><th>Celular</th><th>Correo</th><th>Escudo</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '</div>';
   }).join('');
@@ -1415,20 +1421,37 @@ function renderEquipos(){
       'plataforma: Programación, Planilla, Listado de Jugadores, Sanciones y Circular. El grupo (A/B) queda fijo ' +
       'porque ya define el calendario de la fase de grupos. Los escudos vienen precargados: use ' +
       '<strong>Cambiar</strong> para reemplazar uno por su propia imagen (se reduce sola a 220 px) o ' +
-      '<strong>Quitar</strong> para dejar las iniciales del club.</p>' +
+      '<strong>Quitar</strong> para dejar las iniciales del club. ' +
+      '<strong>Toque el nombre de un club para ver y editar su plantel.</strong></p>' +
     '</div>' + gruposHtml;
 
-  panel.querySelectorAll('.eq-nombre').forEach(function(inp){
-    inp.addEventListener('change', function(){
-      var eq = STATE.equipos.find(function(e){ return e.id === inp.dataset.id; });
+  /* El nombre del club es el acceso a su plantel */
+  panel.querySelectorAll('.ir-plantel').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      JUGADORES_SELECTED_TEAM = btn.dataset.id;
+      switchTab('jugadores');
+    });
+  });
+  panel.querySelectorAll('.eq-rename').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var eq = STATE.equipos.find(function(e){ return e.id === btn.dataset.id; });
       if (!eq) return;
-      var nombreAnterior = eq.nombre;
-      var nuevoNombre = inp.value.trim() || eq.nombre;
-      if (nuevoNombre === nombreAnterior) return;
-      eq.nombre = nuevoNombre;
-      logActivity('Equipo renombrado', nombreAnterior + ' → ' + nuevoNombre);
-      renderAll();
-      toast('Equipo actualizado.');
+      formModal({
+        title: 'Cambiar nombre del club',
+        okText: 'Guardar',
+        bodyHtml: '<div class="field"><label>Nombre del club</label>' +
+          '<input class="txt-input" name="nombre" style="width:100%;" value="' + escapeHtml(eq.nombre) + '"></div>',
+        onOk: function(form){
+          var nuevoNombre = form.nombre.value.trim();
+          if (!nuevoNombre){ toast('Indique el nombre del club.', true); return false; }
+          if (nuevoNombre === eq.nombre) return;
+          var nombreAnterior = eq.nombre;
+          eq.nombre = nuevoNombre;
+          logActivity('Equipo renombrado', nombreAnterior + ' → ' + nuevoNombre);
+          renderAll();
+          toast('Equipo actualizado.');
+        }
+      });
     });
   });
   ['delegado','rut','celular','correo'].forEach(function(field){
@@ -1533,9 +1556,11 @@ function renderProgramacion(){
          '<td><input type="number" min="0" class="num-input pv-input"' + bloqueo + ' data-id="' + p.id + '" placeholder="Pen." value="' + (p.penalesVisita===null?'':p.penalesVisita) + '"></td>')
         : '<td></td><td></td>') +
       '<td>' + resultadoTexto(p) + '</td>' +
-      '<td>' + (!editable ? '<span class="muted" style="font-size:11px;" title="Solo el administrador puede corregir un resultado de una jornada cerrada.">🔒 Cerrado</span>'
-             : p.auto ? '<span class="muted" style="font-size:11px;">Automático</span>'
-             : esAdmin() ? '<button class="btn btn-ghost btn-xs del-match" data-id="' + p.id + '">🗑️</button>' : '') + '</td>' +
+      '<td style="white-space:nowrap;">' +
+        '<button class="btn btn-gold btn-xs ir-planilla" data-id="' + p.id + '">▶ IR A PARTIDO</button>' +
+        (!editable ? ' <span class="muted" style="font-size:11px;" title="Solo el administrador puede corregir un resultado de una jornada cerrada.">🔒</span>'
+           : p.auto ? ''
+           : esAdmin() ? ' <button class="btn btn-ghost btn-xs del-match" data-id="' + p.id + '">🗑️</button>' : '') + '</td>' +
     '</tr>';
   }
 
@@ -1545,7 +1570,7 @@ function renderProgramacion(){
       '<p class="desc" style="margin:2px 0 0;">Todos contra todos a una rueda, 5 fechas. Calendario vigente: dos partidos por día (21:00 y 22:00), de lunes a jueves, ordenado para maximizar el descanso entre partidos de cada club.</p></div>' +
       (esAdmin() ? '<button class="btn btn-primary btn-xs" id="btnAddMatch">➕ Agregar partido</button>' : '') + '</div>' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>N°</th><th>Fecha</th><th>Grupo</th><th>Día</th><th>Hora</th><th>Local</th><th>GL</th><th></th><th>GV</th><th>Visita</th><th>Pen. L</th><th>Pen. V</th><th>Resultado</th><th></th>' +
+      '<th>N°</th><th>Fecha</th><th>Grupo</th><th>Día</th><th>Hora</th><th>Local</th><th>GL</th><th></th><th>GV</th><th>Visita</th><th>Pen. L</th><th>Pen. V</th><th>Resultado</th><th>Planilla</th>' +
       '</tr></thead><tbody>' + grupos.map(fila).join('') + '</tbody></table></div>' +
     '</div>' +
     '<div class="card">' +
@@ -1554,7 +1579,7 @@ function renderProgramacion(){
       'Los equipos de cada cruce se completan solos según la Tabla de Posiciones vigente — ingrese estos resultados ' +
       'una vez cerrada la fase de grupos. Empate en el marcador: se define por penales.</p>' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>N°</th><th>Etapa</th><th>Grupo</th><th>Día</th><th>Hora</th><th>Local</th><th>GL</th><th></th><th>GV</th><th>Visita</th><th>Pen. L</th><th>Pen. V</th><th>Resultado</th><th></th>' +
+      '<th>N°</th><th>Etapa</th><th>Grupo</th><th>Día</th><th>Hora</th><th>Local</th><th>GL</th><th></th><th>GV</th><th>Visita</th><th>Pen. L</th><th>Pen. V</th><th>Resultado</th><th>Planilla</th>' +
       '</tr></thead><tbody>' + playoffs.map(fila).join('') + '</tbody></table></div>' +
     '</div>';
 
@@ -1563,6 +1588,14 @@ function renderProgramacion(){
     logActivity('Resultado editado', 'Partido N°' + p.numero + ': ' + t.localNombre + ' ' +
       (p.golesLocal===null?'-':p.golesLocal) + ' — ' + (p.golesVisita===null?'-':p.golesVisita) + ' ' + t.visitaNombre);
   }
+  /* El N° de partido abre su planilla, sin tener que buscarla */
+  panel.querySelectorAll('.ir-planilla').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      PLANILLA_SELECTED_MATCH = btn.dataset.id;
+      switchTab('planilla');
+    });
+  });
+
   panel.querySelectorAll('.gl-input').forEach(function(inp){
     inp.addEventListener('change', function(){
       var p = getPartido(STATE, inp.dataset.id);
@@ -2097,11 +2130,12 @@ function renderPlanilla(){
   panel.innerHTML =
     '<div class="card">' +
       '<h3>Seleccione el partido</h3>' +
-      '<p class="desc">Marque la asistencia de cada jugador; el dorsal viene del plantel pero puede editarlo si ese ' +
-      'día usa otro número. Puede inscribir jugadores nuevos directamente aquí.</p>' +
+      '<p class="desc">Hoja única del partido: acreditación por firma, asistencia y dorsales, y el registro de goles, ' +
+      'faltas y tarjetas. También se llega aquí tocando el N° del partido en Programación y Resultados.</p>' +
       '<select id="planillaMatchSel" style="min-width:340px;"><option value="">— elija un partido —</option>' + opciones + '</select>' +
     '</div>' +
-    '<div id="planillaBody"></div>';
+    '<div id="planillaBody"></div>' +
+    '<div id="actaBody"></div>';
 
   document.getElementById('planillaMatchSel').addEventListener('change', function(){
     PLANILLA_SELECTED_MATCH = this.value || null;
@@ -2114,13 +2148,18 @@ RENDERERS.planilla = renderPlanilla;
 function renderPlanillaBody(){
   var body = document.getElementById('planillaBody');
   if (!body) return;
-  if (!PLANILLA_SELECTED_MATCH){ body.innerHTML = '<div class="card"><div class="empty-hint">Elija un partido para ver su planilla.</div></div>'; return; }
+  if (!PLANILLA_SELECTED_MATCH){
+    body.innerHTML = '<div class="card"><div class="empty-hint">Elija un partido para ver su planilla.</div></div>';
+    renderActaBody();
+    return;
+  }
   var p = getPartido(STATE, PLANILLA_SELECTED_MATCH);
-  if (!p){ body.innerHTML = ''; return; }
+  if (!p){ body.innerHTML = ''; renderActaBody(); return; }
   var t = matchRowTeams(p);
   if (!t.localId || !t.visitaId){
     body.innerHTML = '<div class="card"><div class="empty-hint">Los equipos de este cruce aún no están definidos ' +
       '(dependen de la Tabla de Posiciones). Complete la fase de grupos primero.</div></div>';
+    renderActaBody();
     return;
   }
   /* Las firmas de este partido viven en su propio documento: se cargan una vez
@@ -2135,6 +2174,7 @@ function renderPlanillaBody(){
 
   var faltan = jugadoresPorAcreditar(p.id);
   body.innerHTML =
+    renderActaHeader(p) +
     '<div class="card"><div class="card-head"><div><h3>Acreditación del partido</h3>' +
       '<p class="desc" style="margin:2px 0 0;">Cada jugador firma con el dedo junto a su nombre. Se registra la hora y ' +
       'el usuario que recibió la firma. Reemplaza la firma en la planilla impresa.</p></div>' +
@@ -2196,13 +2236,13 @@ function renderPlanillaBody(){
         toast('Jugador inscrito.');
       }
 
-      var dup = checkDobleInscripcion(nombre, teamId);
-      if (dup){
-        var otroEquipo = getEquipo(STATE, dup.teamId);
+      var dupPl = checkDobleInscripcion(nombre, teamId);
+      if (dupPl){
+        var otroEquipo = getEquipo(STATE, dupPl.teamId);
         confirmModal({
           title: '⚠️ Jugador ya inscrito en otro equipo',
           html: '<p><b>' + escapeHtml(nombre) + '</b> ya figura inscrito en <b>' + escapeHtml(otroEquipo ? otroEquipo.nombre : 'otro equipo') +
-                '</b> (dorsal #' + dup.dorsal + '). Según las bases, en caso de inscripción múltiple el jugador queda ' +
+                '</b> (dorsal #' + dupPl.dorsal + '). Según las bases, en caso de inscripción múltiple el jugador queda ' +
                 'inscrito en el club por el que juegue primero. ¿Autoriza de todas formas la doble inscripción?</p>',
           okText: 'Autorizar doble inscripción', okClass: 'btn-danger', cancelText: 'Cancelar',
           onOk: crear
@@ -2212,6 +2252,10 @@ function renderPlanillaBody(){
       }
     });
   });
+
+  /* El registro del partido (goles, faltas y tarjetas) va a continuación, en la
+     misma hoja: ya no existe una pestaña de Acta aparte. */
+  renderActaBody();
 }
 
 
@@ -2232,15 +2276,23 @@ function renderJugadores(){
     }).join('') + '</optgroup>';
   }).join('');
 
+  var equipoActual = getEquipo(STATE, JUGADORES_SELECTED_TEAM);
   panel.innerHTML =
     '<div class="card">' +
-      '<div class="card-head"><div><h3>Seleccione un equipo</h3>' +
-      '<p class="desc" style="margin:2px 0 0;">La nómina que entrega cada club se puede cargar directo desde el ' +
-      'formato oficial en Excel, sin digitar jugador por jugador.</p></div>' +
-      (puedeEditarAlgo() ? '<button class="btn btn-primary btn-xs" id="btnImportNomina">📥 Importar nómina (Excel)</button>' : '') + '</div>' +
+      '<div class="card-head">' +
+        '<div class="row-flex" style="align-items:center;">' +
+          '<button class="btn btn-ghost btn-xs" id="btnVolverEquipos">← Equipos y Datos</button>' +
+          '<h3 style="margin:0;">' + (equipoActual ? teamLogoHtml(equipoActual) + ' ' + escapeHtml(equipoActual.nombre) : 'Plantel') + '</h3>' +
+        '</div>' +
+        (puedeEditarAlgo() ? '<button class="btn btn-primary btn-xs" id="btnImportNomina">📥 Importar nómina (Excel)</button>' : '') +
+      '</div>' +
+      '<p class="desc">La nómina que entrega cada club se puede cargar directo desde el formato oficial en Excel, ' +
+      'sin digitar jugador por jugador. Para ver otro club, cámbielo aquí o vuelva a Equipos y Datos.</p>' +
       '<select id="jugadoresTeamSel" style="min-width:280px;">' + opts + '</select>' +
     '</div>' +
     '<div id="jugadoresBody"></div>';
+
+  document.getElementById('btnVolverEquipos').addEventListener('click', function(){ switchTab('equipos'); });
 
   document.getElementById('jugadoresTeamSel').addEventListener('change', function(){
     JUGADORES_SELECTED_TEAM = this.value;
@@ -2401,8 +2453,6 @@ RENDERERS.goleadores = renderGoleadores;
 /* ============================================================================
    TAB: ACTA DE PARTIDO
    ============================================================================ */
-var ACTA_SELECTED_NUM = null;
-
 function ensureActa(matchId){
   if (!STATE.actas[matchId]) STATE.actas[matchId] = { acciones: [], resultadoAplicado: false };
   return STATE.actas[matchId];
@@ -2442,56 +2492,25 @@ function causalSelectHtml(prefix){
   '</select><select class="' + prefix + '-detalle"><option value="">—</option></select>';
 }
 
-function renderActa(){
-  var panel = document.getElementById('panel-acta');
-  panel.innerHTML =
-    '<div class="card">' +
-      '<h3>Buscar partido</h3>' +
-      '<p class="desc">Digite el número de partido (columna N° de Programación) para autocompletar todo lo demás.</p>' +
-      '<input class="txt-input" type="number" id="actaNumInput" min="1" style="width:140px;" value="' + (ACTA_SELECTED_NUM||'') + '" placeholder="N° partido">' +
-      '<span id="actaNumErr" class="muted" style="margin-left:10px;color:#d8384f;"></span>' +
-    '</div>' +
-    '<div id="actaBody"></div>';
+/* Tras registrar una acción el formulario se redibuja en blanco */
+var FORM_ACCION_LIMPIO = false;
 
-  var input = document.getElementById('actaNumInput');
-  function buscar(){
-    var n = Number(input.value);
-    var err = document.getElementById('actaNumErr');
-    if (!n){ ACTA_SELECTED_NUM = null; err.textContent=''; renderActaBody(); return; }
-    var p = STATE.partidos.find(function(x){ return x.numero === n; });
-    if (!p){ err.textContent = 'No existe un partido con ese número.'; ACTA_SELECTED_NUM = null; renderActaBody(); return; }
-    err.textContent = '';
-    ACTA_SELECTED_NUM = n;
-    renderActaBody();
-  }
-  input.addEventListener('input', buscar);
-  renderActaBody();
-}
-RENDERERS.acta = renderActa;
-
+/* El registro del partido ya no es una pestaña: se dibuja dentro de la Planilla
+   de Juego, sobre el mismo partido que la mesa tiene abierto. */
 function renderActaBody(){
   var body = document.getElementById('actaBody');
   if (!body) return;
-  if (!ACTA_SELECTED_NUM){ body.innerHTML = '<div class="card"><div class="empty-hint">Ingrese un número de partido válido.</div></div>'; return; }
-  var p = STATE.partidos.find(function(x){ return x.numero === ACTA_SELECTED_NUM; });
+  if (!PLANILLA_SELECTED_MATCH){ body.innerHTML = ''; return; }
+  var p = getPartido(STATE, PLANILLA_SELECTED_MATCH);
   if (!p){ body.innerHTML = ''; return; }
   var t = matchRowTeams(p);
-  if (!t.localId || !t.visitaId){
-    body.innerHTML = renderActaHeader(p) + '<div class="card"><div class="empty-hint">Los equipos de este cruce aún no están definidos (dependen de la Tabla de Posiciones).</div></div>';
-    return;
-  }
+  if (!t.localId || !t.visitaId){ body.innerHTML = ''; return; }
   var planilla = STATE.planillas[p.id];
   var asistLocal = asistentesDeLado(p.id, t.localId, 'local');
   var asistVisita = asistentesDeLado(p.id, t.visitaId, 'visita');
   if (!planilla || (asistLocal.length===0 && asistVisita.length===0)){
-    body.innerHTML = renderActaHeader(p) +
-      '<div class="card">' +
-        '<div class="empty-hint">Aún no hay jugadores marcados como "asiste" en la Planilla de este partido.</div>' +
-        '<div style="text-align:center;"><button class="btn btn-gold" id="irAPlanillaBtn">📋 Ir a la Planilla de este partido</button></div>' +
-      '</div>';
-    document.getElementById('irAPlanillaBtn').addEventListener('click', function(){
-      PLANILLA_SELECTED_MATCH = p.id; switchTab('planilla');
-    });
+    body.innerHTML = '<div class="card"><div class="empty-hint">Marque arriba quiénes asisten para poder registrar ' +
+      'goles, faltas y tarjetas de este partido.</div></div>';
     return;
   }
 
@@ -2500,11 +2519,16 @@ function renderActaBody(){
 
   function accionesFilas(){
     if (!acta.acciones.length) return '<tr><td colspan="7" class="empty-hint">Sin acciones registradas.</td></tr>';
-    return acta.acciones.map(function(a){
+    /* La más reciente primero: es la que la mesa acaba de registrar */
+    return acta.acciones.slice().reverse().map(function(a){
       var j = getJugador(STATE, a.playerId);
+      /* El dorsal es el de la planilla de este partido, no el del plantel:
+         un jugador puede usar otro número ese día. */
+      var reg = planilla && planilla[a.lado] ? planilla[a.lado][a.playerId] : null;
+      var dorsalFila = reg && reg.dorsal ? reg.dorsal : (j ? j.dorsal : '?');
       return '<tr>' +
         '<td>' + (a.lado==='local' ? '<span class="pill pill-A">Local</span>' : '<span class="pill pill-B">Visita</span>') + '</td>' +
-        '<td>#' + (j?j.dorsal:'?') + '</td>' +
+        '<td>#' + dorsalFila + '</td>' +
         '<td>' + escapeHtml(j?j.nombre:'—') + '</td>' +
         '<td>' + (TIPO_LABELS[a.tipo]||a.tipo) + (a.detalle ? '<div class="muted" style="font-size:11px;">'+escapeHtml(a.detalle)+'</div>' : '') + '</td>' +
         '<td>' + (a.minuto!==null && a.minuto!=='' ? a.minuto + "'" : '—') + '</td>' +
@@ -2518,8 +2542,9 @@ function renderActaBody(){
     return acta.acciones.filter(function(a){ return a.playerId===playerId && a.tipo==='amarilla'; }).length;
   }
 
-  body.innerHTML = renderActaHeader(p) +
+  body.innerHTML =
     '<div class="card">' +
+      '<h3 style="margin-bottom:10px;">Registro del partido</h3>' +
       '<div class="row-flex" style="justify-content:space-between;">' +
         '<div style="font-size:26px;font-weight:800;">' + marcador.local + ' <span class="muted" style="font-size:16px;">—</span> ' + marcador.visita + '</div>' +
         '<div class="row-flex">' +
@@ -2536,8 +2561,12 @@ function renderActaBody(){
           '<option value="local">' + escapeHtml(t.localNombre) + ' (Local)</option>' +
           '<option value="visita">' + escapeHtml(t.visitaNombre) + ' (Visita)</option>' +
         '</select></div>' +
-        '<div class="field"><label>Dorsal</label><select name="playerId" id="dorsalSelect"></select></div>' +
-        '<div class="field"><label>Jugador</label><input class="txt-input" id="nombreAuto" disabled style="width:180px;"></div>' +
+        '<div class="field"><label>Jugadores</label>' +
+          '<input class="txt-input" id="dorsalInput" list="dorsalesLista" autocomplete="off" ' +
+            'placeholder="N° o nombre" style="width:210px;">' +
+          '<datalist id="dorsalesLista"></datalist>' +
+          '<div class="muted" id="jugadorElegido" style="font-size:11px;margin-top:3px;">Digite el dorsal o elija de la lista</div>' +
+        '</div>' +
         '<div class="field"><label>Acción</label><select name="tipo" id="tipoSelect">' +
           '<option value="gol">⚽ Gol</option><option value="autogol">🥅 Autogol</option><option value="falta">🚩 Falta</option>' +
           '<option value="amarilla">🟨 Amarilla</option><option value="roja">🟥 Roja</option>' +
@@ -2553,21 +2582,58 @@ function renderActaBody(){
     '</div>';
 
   var form = document.getElementById('accionForm');
-  var dorsalSelect = document.getElementById('dorsalSelect');
-  var nombreAuto = document.getElementById('nombreAuto');
+  var dorsalInput = document.getElementById('dorsalInput');
+  var dorsalLista = document.getElementById('dorsalesLista');
+  var jugadorElegido = document.getElementById('jugadorElegido');
+  var PLAYER_ID_SEL = null;   // jugador resuelto a partir de lo digitado o elegido
   var tipoSelect = document.getElementById('tipoSelect');
   var causalWrap = document.getElementById('causalWrap');
   var accCausal = form.querySelector('.acc-causal');
   var accDetalle = form.querySelector('.acc-detalle');
 
+  function listaLado(){ return form.lado.value === 'local' ? asistLocal : asistVisita; }
+
   function refreshDorsales(){
-    var lista = form.lado.value === 'local' ? asistLocal : asistVisita;
-    dorsalSelect.innerHTML = lista.map(function(x){ return '<option value="'+x.jugador.id+'">#'+x.dorsal+' — '+escapeHtml(x.jugador.nombre)+'</option>'; }).join('') || '<option value="">Sin asistentes</option>';
-    refreshNombre();
+    dorsalLista.innerHTML = listaLado().map(function(x){
+      return '<option value="' + x.dorsal + ' — ' + escapeHtml(x.jugador.nombre) + '"></option>';
+    }).join('');
+    dorsalInput.value = '';
+    PLAYER_ID_SEL = null;
+    mostrarElegido();
   }
-  function refreshNombre(){
-    var j = getJugador(STATE, dorsalSelect.value);
-    nombreAuto.value = j ? j.nombre : '';
+
+  /* Resuelve el jugador a partir de lo escrito: si es solo un número, busca ese
+     dorsal entre los asistentes; si no, compara contra el texto de la lista. */
+  function resolverJugador(){
+    var txt = (dorsalInput.value || '').trim();
+    var lista = listaLado();
+    PLAYER_ID_SEL = null;
+    if (!txt){ mostrarElegido(); return; }
+    var soloNumero = /^\d+$/.test(txt);
+    var hallado = null;
+    if (soloNumero){
+      hallado = lista.filter(function(x){ return String(x.dorsal) === txt; })[0];
+    } else {
+      var norm = normTexto(txt);
+      hallado = lista.filter(function(x){ return normTexto(x.dorsal + ' — ' + x.jugador.nombre) === norm; })[0] ||
+                lista.filter(function(x){ return normTexto(x.jugador.nombre).indexOf(norm) !== -1; })[0] ||
+                lista.filter(function(x){ return normTexto(x.dorsal + ' — ' + x.jugador.nombre).indexOf(norm) === 0; })[0];
+    }
+    if (hallado) PLAYER_ID_SEL = hallado.jugador.id;
+    mostrarElegido();
+  }
+  function mostrarElegido(){
+    var j = getJugador(STATE, PLAYER_ID_SEL);
+    if (j){
+      jugadorElegido.textContent = '✓ ' + j.nombre;
+      jugadorElegido.style.color = 'var(--green-dark)';
+    } else if ((dorsalInput.value || '').trim()){
+      jugadorElegido.textContent = 'Ese dorsal no está entre los asistentes';
+      jugadorElegido.style.color = 'var(--danger)';
+    } else {
+      jugadorElegido.textContent = 'Digite el dorsal o elija de la lista';
+      jugadorElegido.style.color = '';
+    }
   }
   function refreshTipoUI(){
     var showCausal = tipoSelect.value === 'amarilla' || tipoSelect.value === 'roja';
@@ -2588,7 +2654,8 @@ function renderActaBody(){
     accDetalle.innerHTML = '<option value="">— elija causal —</option>';
   }
   form.lado.addEventListener('change', refreshDorsales);
-  dorsalSelect.addEventListener('change', refreshNombre);
+  dorsalInput.addEventListener('input', resolverJugador);
+  dorsalInput.addEventListener('change', resolverJugador);
   tipoSelect.addEventListener('change', refreshTipoUI);
   var sancionSelect = document.getElementById('sancionSelect');
   var sancionLibre = 0;   // valor elegido con "Otra cantidad…"
@@ -2615,13 +2682,28 @@ function renderActaBody(){
     if (d) fijarSancion(d.partidos || 0);
   });
   refreshDorsales(); refreshTipoUI();
+  if (FORM_ACCION_LIMPIO){
+    FORM_ACCION_LIMPIO = false;
+    form.lado.selectedIndex = 0;
+    tipoSelect.selectedIndex = 0;
+    form.minuto.value = '';
+    fijarSancion(0);
+    refreshDorsales();
+    refreshTipoUI();
+    dorsalInput.focus();
+  }
 
   form.addEventListener('submit', function(e){
     e.preventDefault();
-    if (!dorsalSelect.value){ toast('No hay jugadores asistentes para ese equipo.', true); return; }
+    resolverJugador();
+    if (!PLAYER_ID_SEL){
+      toast(listaLado().length ? 'Indique el dorsal del jugador.' : 'No hay jugadores asistentes para ese equipo.', true);
+      dorsalInput.focus();
+      return;
+    }
     var d = findDetalle(accCausal.value, accDetalle.value);
     var nuevaAccion = {
-      id: uid('acc'), lado: form.lado.value, playerId: dorsalSelect.value, tipo: tipoSelect.value,
+      id: uid('acc'), lado: form.lado.value, playerId: PLAYER_ID_SEL, tipo: tipoSelect.value,
       minuto: form.minuto.value === '' ? null : Number(form.minuto.value),
       causal: accCausal.value || null, detalle: accDetalle.value || null, multa: d ? d.multa : 0,
       partidos: sancionSelect.value === 'otro' ? sancionLibre : (Number(sancionSelect.value) || 0),
@@ -2639,7 +2721,11 @@ function renderActaBody(){
         toast('¡Segunda amarilla para este jugador! Recuerde registrar también la expulsión (tarjeta roja, bases 4.14).', true);
       }
     }
+    /* El formulario vuelve a cero: la mesa registra la acción siguiente
+       eligiendo todo desde el principio, sin arrastrar lo anterior. */
+    FORM_ACCION_LIMPIO = true;
     renderAll();
+    toast('Acción registrada.');
   });
 
   body.querySelectorAll('.del-accion').forEach(function(btn){
@@ -2963,7 +3049,7 @@ function importarJSON(file){
         parsed.causales = parsed.causales && parsed.causales.length ? parsed.causales : CAUSALES;
         parsed.historial = parsed.historial || [];
         STATE = parsed;
-        PLANILLA_SELECTED_MATCH = null; JUGADORES_SELECTED_TEAM = null; ACTA_SELECTED_NUM = null; CIRCULAR_SELECTED = null;
+        PLANILLA_SELECTED_MATCH = null; JUGADORES_SELECTED_TEAM = null; CIRCULAR_SELECTED = null;
         logActivity('Datos importados desde archivo JSON', file.name || '');
         renderAll();
         renderCurrentTab();
@@ -4456,10 +4542,13 @@ var ROLES = {
   general: { etiqueta: 'General (solo consulta)',  desc: 'Puede ver toda la información, sin editar nada.' }
 };
 
+/* Pestañas navegables que no se muestran en el menú */
+var TABS_SIN_BOTON = ['jugadores'];
+
 var TABS_POR_ROL = {
-  admin:   ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular','historialclub','historial','usuarios'],
-  mesa:    ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular','historialclub'],
-  general: ['equipos','programacion','posiciones','sanciones','planilla','jugadores','goleadores','acta','circular']
+  admin:   ['equipos','programacion','planilla','posiciones','goleadores','sanciones','circular','jugadores','historialclub','historial','usuarios'],
+  mesa:    ['equipos','programacion','planilla','posiciones','goleadores','sanciones','circular','jugadores','historialclub'],
+  general: ['equipos','programacion','planilla','posiciones','goleadores','sanciones','circular','jugadores']
 };
 
 function crearUsuariosIniciales(){
@@ -4530,7 +4619,8 @@ function aplicarPermisosUI(){
 
   var permitidas = TABS_POR_ROL[rol] || [];
   document.querySelectorAll('.tab-btn').forEach(function(b){
-    var ok = permitidas.indexOf(b.dataset.tab) !== -1;
+    /* El plantel se abre desde Equipos y Datos: es navegable pero sin botón */
+    var ok = permitidas.indexOf(b.dataset.tab) !== -1 && TABS_SIN_BOTON.indexOf(b.dataset.tab) === -1;
     b.classList.toggle('hidden', !ok);
   });
   var btnImp = document.getElementById('btnImport');
