@@ -660,7 +660,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.11-5';
+var APP_VERSION = 'v2026.09.11-6';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2183,6 +2183,7 @@ function renderPlanillaBody(){
   }
   /* Las firmas de este partido viven en su propio documento: se cargan una vez
      y luego se redibuja con ellas ya disponibles. */
+  escucharFirmas(p.id);
   if (!FIRMAS_CARGADAS[p.id]){
     body.innerHTML = '<div class="card"><div class="empty-hint">Cargando acreditaciones…</div></div>';
     cargarFirmas(p.id).then(function(){
@@ -2202,6 +2203,9 @@ function renderPlanillaBody(){
       '<div class="row-flex">' +
         '<span class="pill ' + (faltan ? 'pill-gold' : 'pill-green') + '" id="acredPill">' +
           (faltan ? faltan + ' por acreditar' : 'Todos acreditados') + '</span>' +
+        '<span class="pill ' + estadoSyncFirmas().clase + '" id="syncFirmasPill" title="' + escapeHtml(estadoSyncFirmas().detalle) + '">' +
+          estadoSyncFirmas().texto + '</span>' +
+        (puedeEditarAlgo() ? '<button class="btn btn-ghost btn-xs" id="btnDiagSync">🔧 Probar sincronización</button>' : '') +
         '<button class="btn btn-ghost btn-xs" id="btnImprimirAcred">🖨️ Hoja de acreditación</button>' +
       '</div>' +
     '</div></div>' +
@@ -2213,6 +2217,9 @@ function renderPlanillaBody(){
   initFirmasEventos(body);
   var btnAcred = document.getElementById('btnImprimirAcred');
   if (btnAcred) btnAcred.addEventListener('click', function(){ imprimirAcreditacion(p.id); });
+  var btnDiag = document.getElementById('btnDiagSync');
+  if (btnDiag) btnDiag.addEventListener('click', diagnosticarSyncFirmas);
+  actualizarEstadoSync();
 
   body.querySelectorAll('.asiste-chk').forEach(function(chk){
     chk.addEventListener('change', function(){
@@ -3718,6 +3725,27 @@ function firmasDe(matchId){
   return FIRMAS_CACHE[matchId];
 }
 
+/* El documento guarda cada firma como un campo dentro del mapa "firmas", para
+   que dos dispositivos puedan escribir a la vez sin pisarse. Se sigue leyendo
+   el formato antiguo ("json" con todas las firmas juntas) por compatibilidad. */
+function firmasDesdeDoc(raw, actuales){
+  var out = {};
+  if (!raw) return actuales || {};
+  if (raw.json){
+    try { out = JSON.parse(raw.json) || {}; } catch (e) { out = {}; }
+  }
+  if (raw.firmas && typeof raw.firmas === 'object'){
+    Object.keys(raw.firmas).forEach(function(jid){
+      if (raw.firmas[jid]) out[jid] = raw.firmas[jid];
+    });
+  }
+  return out;
+}
+
+function guardarFirmasLocal(matchId){
+  try { localStorage.setItem(firmasClaveLocal(matchId), JSON.stringify(firmasDe(matchId))); } catch (e) {}
+}
+
 function cargarFirmas(matchId){
   if (!matchId) return Promise.resolve({});
   if (FIRMAS_CARGADAS[matchId]) return Promise.resolve(firmasDe(matchId));
@@ -3733,13 +3761,9 @@ function cargarFirmas(matchId){
     return Promise.resolve(firmasDe(matchId));
   }
   return FIRMAS_DB.collection(FIREBASE_FIRMAS_COL).doc(matchId).get().then(function(snap){
-    if (snap.exists){
-      var raw = snap.data();
-      if (raw && raw.json){
-        try { FIRMAS_CACHE[matchId] = JSON.parse(raw.json); } catch (e) { /* deja lo local */ }
-      }
-    }
+    if (snap.exists) FIRMAS_CACHE[matchId] = firmasDesdeDoc(snap.data(), FIRMAS_CACHE[matchId]);
     FIRMAS_CARGADAS[matchId] = true;
+    guardarFirmasLocal(matchId);
     return firmasDe(matchId);
   }).catch(function(err){
     console.error('No se pudieron cargar las firmas del partido:', err);
@@ -3757,6 +3781,75 @@ function cargarFirmas(matchId){
 --------------------------------------------------------------------------- */
 var FIRMAS_ESCUCHA = null;       // función para cancelar la escucha activa
 var FIRMAS_ESCUCHANDO = null;    // partido que se está escuchando
+var FIRMAS_ULTIMA_SINC = null;   // hora del último dato recibido del servidor
+var FIRMAS_ULTIMO_ERROR = null;  // último error al escribir una firma
+
+/* Estado visible de la sincronización de acreditaciones */
+function estadoSyncFirmas(){
+  if (!FIRMAS_DB) return { clase: 'pill-gold', texto: '⚠ Solo este dispositivo',
+    detalle: 'La plataforma no está conectada a la base en línea: las firmas no se comparten.' };
+  if (FIRMAS_ULTIMO_ERROR) return { clase: 'pill-red', texto: '⚠ Error al sincronizar',
+    detalle: 'Última respuesta del servidor: ' + (FIRMAS_ULTIMO_ERROR.code || FIRMAS_ULTIMO_ERROR.message || 'error') + '.' };
+  if (!FIRMAS_ESCUCHANDO) return { clase: 'pill-muted', texto: '… conectando',
+    detalle: 'Aún no se activa la escucha de este partido.' };
+  return { clase: 'pill-green', texto: '🟢 En vivo',
+    detalle: 'Las firmas de otros dispositivos aparecen solas' +
+      (FIRMAS_ULTIMA_SINC ? '. Último dato recibido a las ' + FIRMAS_ULTIMA_SINC.toTimeString().slice(0,5) : '') + '.' };
+}
+
+function actualizarEstadoSync(){
+  var el = document.getElementById('syncFirmasPill');
+  if (!el) return;
+  var e = estadoSyncFirmas();
+  el.className = 'pill ' + e.clase;
+  el.textContent = e.texto;
+  el.title = e.detalle;
+}
+
+/* Comprueba de punta a punta que las firmas se pueden escribir y leer en línea,
+   y dice exactamente qué falla cuando no funciona. */
+function diagnosticarSyncFirmas(){
+  var pasos = [];
+  function linea(ok, texto){
+    return '<div style="margin:4px 0;">' + (ok ? '✅' : '❌') + ' ' + texto + '</div>';
+  }
+  pasos.push(linea(!!FIREBASE_DOC_REF, 'Conexión con la base de datos del campeonato'));
+  pasos.push(linea(!!FIRMAS_DB, 'Acceso a la colección de firmas (' + FIREBASE_FIRMAS_COL + ')'));
+  pasos.push(linea(!!FIRMAS_ESCUCHANDO, 'Escucha activa del partido abierto'));
+
+  if (!FIRMAS_DB){
+    alertModal('Diagnóstico de sincronización',
+      pasos.join('') +
+      '<p style="margin-top:12px;font-size:12.5px;">La plataforma no logró conectarse a Firestore. Revise la configuración ' +
+      'de Firebase en el archivo y que haya señal en el dispositivo.</p>');
+    return;
+  }
+
+  var ref = FIRMAS_DB.collection(FIREBASE_FIRMAS_COL).doc('_diagnostico');
+  var marca = new Date().toISOString();
+  ref.set({ prueba: marca }, { merge: true }).then(function(){
+    pasos.push(linea(true, 'Escritura de prueba en la colección de firmas'));
+    return ref.get();
+  }).then(function(snap){
+    var ok = snap.exists && snap.data() && snap.data().prueba === marca;
+    pasos.push(linea(ok, 'Lectura de vuelta de la escritura de prueba'));
+    alertModal('Diagnóstico de sincronización', pasos.join('') +
+      '<p style="margin-top:12px;font-size:12.5px;">' + (ok ?
+        'Todo en orden: las firmas se comparten entre dispositivos. Si aun así no ve las firmas del celular, ' +
+        'confirme que ambos tienen abierto el mismo partido.' :
+        'La escritura no se pudo leer de vuelta. Revise las reglas de Firestore.') + '</p>');
+  }).catch(function(err){
+    var codigo = err && err.code ? err.code : 'error';
+    pasos.push(linea(false, 'Escritura de prueba en la colección de firmas — ' + escapeHtml(codigo)));
+    alertModal('Diagnóstico de sincronización', pasos.join('') +
+      '<p style="margin-top:12px;font-size:12.5px;">' +
+      (codigo === 'permission-denied' ?
+        'Las reglas de Firestore no permiten escribir en la colección <strong>' + FIREBASE_FIRMAS_COL + '</strong>. ' +
+        'Publique en Firebase → Firestore → Reglas el bloque que incluye <code>match /' + FIREBASE_FIRMAS_COL + '/{partidoId}</code> ' +
+        'con lectura y escritura permitidas.' :
+        'Error del servidor: ' + escapeHtml(codigo) + '.') + '</p>');
+  });
+}
 
 function detenerEscuchaFirmas(){
   if (FIRMAS_ESCUCHA){ try { FIRMAS_ESCUCHA(); } catch (e) {} }
@@ -3774,15 +3867,15 @@ function escucharFirmas(matchId){
       if (snap.metadata.hasPendingWrites) return;   // eco de nuestra propia firma
       if (!snap.exists) return;
       var raw = snap.data();
-      if (!raw || !raw.json) return;
-      var entrantes;
-      try { entrantes = JSON.parse(raw.json); } catch (e) { return; }
-
+      if (!raw) return;
+      var entrantes = firmasDesdeDoc(raw, firmasDe(matchId));
       var antes = Object.keys(firmasDe(matchId)).length;
       var ahora = Object.keys(entrantes).length;
       FIRMAS_CACHE[matchId] = entrantes;
       FIRMAS_CARGADAS[matchId] = true;
-      try { localStorage.setItem(firmasClaveLocal(matchId), raw.json); } catch (e) {}
+      FIRMAS_ULTIMA_SINC = new Date();
+      guardarFirmasLocal(matchId);
+      actualizarEstadoSync();
 
       if (PLANILLA_SELECTED_MATCH === matchId && CURRENT_TAB === 'planilla'){
         refrescarAcreditacion(matchId);
@@ -3825,21 +3918,43 @@ function refrescarAcreditacion(matchId){
   }
 }
 
-function guardarFirmas(matchId){
-  var json = JSON.stringify(firmasDe(matchId));
-  try { localStorage.setItem(firmasClaveLocal(matchId), json); } catch (e) { /* cuota llena */ }
+/* Guarda UNA firma. Escribe solo ese campo, así dos dispositivos que acreditan
+   al mismo tiempo no se borran entre ellos (antes se reescribía el documento
+   completo con la copia local, que podía estar desactualizada). */
+function guardarFirma(matchId, jugadorId){
+  guardarFirmasLocal(matchId);
+  if (!FIRMAS_DB){ actualizarEstadoSync(); return; }
+  var dato = {};
+  dato[jugadorId] = firmasDe(matchId)[jugadorId];
+  FIRMAS_DB.collection(FIREBASE_FIRMAS_COL).doc(matchId).set({
+    firmas: dato,
+    actualizado: new Date().toISOString(),
+    partido: matchId
+  }, { merge: true }).then(function(){
+    FIRMAS_ULTIMO_ERROR = null;
+    actualizarEstadoSync();
+  }).catch(function(err){
+    console.error('No se pudo guardar la firma:', err);
+    FIRMAS_ULTIMO_ERROR = err;
+    actualizarEstadoSync();
+    toast('No se pudo guardar la firma en línea (' + (err && err.code ? err.code : 'error') + '). Quedó en este dispositivo.', true);
+  });
+}
+
+/* Anula una firma: borra ese único campo del documento. */
+function borrarFirmaRemota(matchId, jugadorId){
+  guardarFirmasLocal(matchId);
   if (!FIRMAS_DB) return;
-  clearTimeout(FIRMAS_GUARDANDO[matchId]);
-  FIRMAS_GUARDANDO[matchId] = setTimeout(function(){
-    FIRMAS_DB.collection(FIREBASE_FIRMAS_COL).doc(matchId).set({
-      json: json,
-      actualizado: new Date().toISOString(),
-      partido: matchId
-    }).catch(function(err){
-      console.error('No se pudieron guardar las firmas:', err);
-      toast('No se pudo guardar la firma en línea. Quedó en este dispositivo.', true);
-    });
-  }, 600);
+  var borrado = {};
+  try {
+    borrado['firmas.' + jugadorId] = firebase.firestore.FieldValue.delete();
+  } catch (e) {
+    return;
+  }
+  FIRMAS_DB.collection(FIREBASE_FIRMAS_COL).doc(matchId).update(borrado).catch(function(err){
+    console.error('No se pudo anular la firma en línea:', err);
+    toast('No se pudo anular la firma en línea (' + (err && err.code ? err.code : 'error') + ').', true);
+  });
 }
 
 /* --- Lienzo de firma ------------------------------------------------------- */
@@ -3934,7 +4049,7 @@ function abrirFirmaJugador(matchId, jugadorId){
         ts: new Date().toISOString(),
         autor: getAutor()
       };
-      guardarFirmas(matchId);
+      guardarFirma(matchId, jugadorId);
       registrarAvanceAcreditacion(matchId);
       cerrar();
       renderPlanillaBody();
@@ -3964,7 +4079,7 @@ function borrarFirmaJugador(matchId, jugadorId){
     okText: 'Anular', okClass: 'btn-danger',
     onOk: function(){
       delete firmasDe(matchId)[jugadorId];
-      guardarFirmas(matchId);
+      borrarFirmaRemota(matchId, jugadorId);
       var p = getPartido(STATE, matchId);
       logActivity('Firma de acreditación anulada', (j ? j.nombre : '') + ' — Partido N°' + (p ? p.numero : '?'));
       renderAll();
