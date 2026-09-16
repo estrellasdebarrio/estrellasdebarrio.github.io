@@ -660,7 +660,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.11-3';
+var APP_VERSION = 'v2026.09.11-4';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2323,8 +2323,26 @@ function renderJugadoresBody(){
   var body = document.getElementById('jugadoresBody');
   if (!body || !JUGADORES_SELECTED_TEAM) return;
   var equipo = getEquipo(STATE, JUGADORES_SELECTED_TEAM);
-  var jugadores = STATE.jugadores.filter(function(j){ return j.teamId === JUGADORES_SELECTED_TEAM; });
+  var nomina = STATE.jugadores.filter(function(j){ return j.teamId === JUGADORES_SELECTED_TEAM; });
+  /* La nómina se muestra en dos listas separadas: arriba el cuerpo técnico y
+     las personas delegadas, abajo los jugadores. */
+  var cuerpo = nomina.filter(function(j){ return j.cargo && j.cargo !== 'Jugador'; });
+  var jugadores = nomina.filter(function(j){ return !j.cargo || j.cargo === 'Jugador'; });
   var allStats = playerStatsAll(STATE);
+
+  var filasCuerpo = cuerpo.map(function(j){
+    return '<tr data-id="'+j.id+'">' +
+      '<td><input class="txt-input jg-nombre" data-id="'+j.id+'" value="'+escapeHtml(j.nombre)+'" style="width:100%;min-width:190px;"></td>' +
+      '<td><select class="jg-cargo" data-id="'+j.id+'">' +
+        '<option'+(j.cargo==='Director técnico'?' selected':'')+'>Director técnico</option>' +
+        '<option'+(j.cargo==='Cuerpo técnico'?' selected':'')+'>Cuerpo técnico</option>' +
+        '<option'+(j.cargo==='Persona delegada'?' selected':'')+'>Persona delegada</option>' +
+        '<option'+(j.cargo==='Jugador'?' selected':'')+'>Jugador</option>' +
+      '</select></td>' +
+      '<td><input class="txt-input jg-contacto" data-id="'+j.id+'" value="'+escapeHtml(j.contacto||'')+'" placeholder="+56 9 ..." style="width:150px;"></td>' +
+      '<td><button class="btn btn-ghost btn-xs del-jugador" data-id="'+j.id+'">🗑️</button></td>' +
+    '</tr>';
+  }).join('') || '<tr><td colspan="4" class="empty-hint">Aún no hay cuerpo técnico ni personas delegadas en este club.</td></tr>';
 
   var rows = jugadores.map(function(j){
     var s = allStats[j.id] || { goles:0, amarillas:0, rojas:0 };
@@ -2332,6 +2350,7 @@ function renderJugadoresBody(){
       '<td><input class="txt-input jg-dorsal" data-id="'+j.id+'" type="number" style="width:64px;" value="'+j.dorsal+'"></td>' +
       '<td><input class="txt-input jg-nombre" data-id="'+j.id+'" value="'+escapeHtml(j.nombre)+'" style="width:100%;min-width:170px;"></td>' +
       '<td><select class="jg-cargo" data-id="'+j.id+'"><option'+(j.cargo==='Jugador'?' selected':'')+'>Jugador</option>' +
+        '<option'+(j.cargo==='Director técnico'?' selected':'')+'>Director técnico</option>' +
         '<option'+(j.cargo==='Cuerpo técnico'?' selected':'')+'>Cuerpo técnico</option>' +
         '<option'+(j.cargo==='Persona delegada'?' selected':'')+'>Persona delegada</option></select></td>' +
       '<td><input class="txt-input jg-rut" data-id="'+j.id+'" value="'+escapeHtml(j.rut||'')+'" style="width:110px;"></td>' +
@@ -2347,19 +2366,36 @@ function renderJugadoresBody(){
     '</tr>';
   }).join('') || '<tr><td colspan="11" class="empty-hint">Aún no hay jugadores en este equipo.</td></tr>';
 
-  body.innerHTML = '<div class="card">' +
-    '<div class="card-head"><h3>' + teamLogoHtml(equipo,'lg') + ' &nbsp;' + escapeHtml(equipo ? equipo.nombre : '') + '</h3>' +
-    '<span class="muted" style="font-size:12px;">' + jugadores.length + ' inscritos (máx. 25, bases 3.1)</span></div>' +
-    '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>Dorsal</th><th>Nombre</th><th>Cargo</th><th>RUT</th><th>Nacionalidad</th><th>Fecha Nac.</th><th>⚽ Goles</th><th>🟨 Amarillas</th><th>🟥 Rojas</th><th>Estado</th><th></th>' +
-    '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-    '<form id="addJugadorForm" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
-      '<div class="field"><label>Nombre</label><input class="txt-input" name="nombre" placeholder="Nombre completo"></div>' +
-      '<div class="field"><label>Dorsal</label><input class="txt-input" name="dorsal" type="number" style="width:80px;"></div>' +
-      '<div class="field"><label>Cargo</label><select name="cargo"><option>Jugador</option><option>Cuerpo técnico</option><option>Persona delegada</option></select></div>' +
-      '<button type="submit" class="btn btn-primary btn-xs">➕ Agregar a la nómina</button>' +
-    '</form>' +
-  '</div>';
+  body.innerHTML =
+    '<div class="card">' +
+      '<div class="card-head"><h3>' + teamLogoHtml(equipo,'lg') + ' &nbsp;Cuerpo técnico y personas delegadas</h3>' +
+      '<span class="muted" style="font-size:12px;">' + cuerpo.length + ' registrada(s)</span></div>' +
+      '<p class="desc">Quienes dirigen y representan al club. No ocupan cupo de los 25 jugadores y no llevan dorsal, ' +
+      'pero sí pueden ser sancionados desde el acta.</p>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>Nombre</th><th>Cargo</th><th>N° de contacto</th><th></th>' +
+      '</tr></thead><tbody>' + filasCuerpo + '</tbody></table></div>' +
+      '<form id="addCuerpoForm" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
+        '<div class="field"><label>Nombre</label><input class="txt-input" name="nombre" placeholder="Nombre completo" style="min-width:190px;"></div>' +
+        '<div class="field"><label>Cargo</label><select name="cargo">' +
+          '<option>Director técnico</option><option>Cuerpo técnico</option><option>Persona delegada</option></select></div>' +
+        '<div class="field"><label>N° de contacto</label><input class="txt-input" name="contacto" placeholder="+56 9 ..." style="width:150px;"></div>' +
+        '<button type="submit" class="btn btn-primary btn-xs">➕ Agregar</button>' +
+      '</form>' +
+    '</div>' +
+
+    '<div class="card">' +
+      '<div class="card-head"><h3>' + teamLogoHtml(equipo,'lg') + ' &nbsp;Jugadores</h3>' +
+      '<span class="muted" style="font-size:12px;">' + jugadores.length + ' inscritos (máx. 25, bases 3.1)</span></div>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>Dorsal</th><th>Nombre</th><th>Cargo</th><th>RUT</th><th>Nacionalidad</th><th>Fecha Nac.</th><th>⚽ Goles</th><th>🟨 Amarillas</th><th>🟥 Rojas</th><th>Estado</th><th></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<form id="addJugadorForm" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
+        '<div class="field"><label>Nombre</label><input class="txt-input" name="nombre" placeholder="Nombre completo"></div>' +
+        '<div class="field"><label>Dorsal</label><input class="txt-input" name="dorsal" type="number" style="width:80px;"></div>' +
+        '<button type="submit" class="btn btn-primary btn-xs">➕ Agregar jugador</button>' +
+      '</form>' +
+    '</div>';
 
   function bindField(cls, prop, parse, logLabel){
     body.querySelectorAll('.' + cls).forEach(function(inp){
@@ -2378,6 +2414,7 @@ function renderJugadoresBody(){
   bindField('jg-cargo','cargo');
   bindField('jg-rut','rut');
   bindField('jg-nacionalidad','nacionalidad');
+  bindField('jg-contacto','contacto');
   bindField('jg-fecha','fechaNac');
   bindField('jg-estado','estado', null, 'Estado de jugador cambiado');
 
@@ -2385,7 +2422,7 @@ function renderJugadoresBody(){
     btn.addEventListener('click', function(){
       var id = btn.dataset.id;
       confirmModal({
-        title:'Eliminar jugador', html:'<p>¿Eliminar a este jugador de la nómina? También se quitará de las planillas guardadas.</p>',
+        title:'Eliminar de la nómina', html:'<p>¿Eliminar a esta persona de la nómina del club? También se quitará de las planillas guardadas.</p>',
         okText:'Eliminar', okClass:'btn-danger',
         onOk: function(){
           var jEliminado = getJugador(STATE, id);
@@ -2401,13 +2438,28 @@ function renderJugadoresBody(){
     });
   });
 
+  var addCuerpo = document.getElementById('addCuerpoForm');
+  addCuerpo.addEventListener('submit', function(e){
+    e.preventDefault();
+    var nombre = addCuerpo.nombre.value.trim();
+    if (!nombre){ toast('Indique el nombre.', true); return; }
+    STATE.jugadores.push({
+      id: uid('pl'), teamId: JUGADORES_SELECTED_TEAM, dorsal: 0, nombre: nombre,
+      cargo: addCuerpo.cargo.value, contacto: addCuerpo.contacto.value.trim(),
+      rut:'', nacionalidad:'', fechaNac:'', estado:'Activo'
+    });
+    logActivity('Cuerpo técnico agregado', nombre + ' — ' + addCuerpo.cargo.value + ' (' + (equipo?equipo.nombre:'—') + ')');
+    renderAll();
+    toast('Agregado a la nómina.');
+  });
+
   var addForm = document.getElementById('addJugadorForm');
   addForm.addEventListener('submit', function(e){
     e.preventDefault();
     var nombre = addForm.nombre.value.trim();
     if (!nombre){ toast('Indique el nombre.', true); return; }
     var dorsal = Number(addForm.dorsal.value) || 0;
-    var cargo = addForm.cargo.value;
+    var cargo = 'Jugador';
     function crear(){
       STATE.jugadores.push({ id: uid('pl'), teamId: JUGADORES_SELECTED_TEAM, dorsal: dorsal, nombre: nombre, cargo: cargo, rut:'', nacionalidad:'', fechaNac:'', estado:'Activo' });
       logActivity('Jugador agregado a la nómina', nombre + ' #' + dorsal + ' (' + (equipo?equipo.nombre:'—') + ')');
@@ -3438,6 +3490,14 @@ function mostrarModalNomina(datos, nombreArchivo){
       (datos.delegado1 ? '<br><span class="muted">Delegado: ' + escapeHtml(datos.delegado1) + (datos.contacto1 ? ' · ' + escapeHtml(datos.contacto1) : '') + '</span>' : '') +
       (datos.correo ? '<br><span class="muted">Correo: ' + escapeHtml(datos.correo) + '</span>' : '') +
       '</span></label>' : '') +
+    ((datos.dt || datos.delegado1 || datos.delegado2) ?
+      '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:12.5px;">' +
+      '<input type="checkbox" name="cuerpo" checked style="margin-top:2px;">' +
+      '<span>Cargar también el cuerpo técnico y las personas delegadas del formulario' +
+      (datos.dt ? '<br><span class="muted">DT: ' + escapeHtml(datos.dt) + (datos.contactoDt ? ' · ' + escapeHtml(datos.contactoDt) : '') + '</span>' : '') +
+      (datos.delegado1 ? '<br><span class="muted">Delegado 1: ' + escapeHtml(datos.delegado1) + (datos.contacto1 ? ' · ' + escapeHtml(datos.contacto1) : '') + '</span>' : '') +
+      (datos.delegado2 ? '<br><span class="muted">Delegado 2: ' + escapeHtml(datos.delegado2) + (datos.contacto2 ? ' · ' + escapeHtml(datos.contacto2) : '') + '</span>' : '') +
+      '</span></label>' : '') +
     (avisos.length ? '<div style="margin-top:12px;padding:9px 11px;border-radius:8px;background:var(--gold-soft);color:var(--gold-dark);font-size:12px;">' +
       avisos.map(function(a){ return '• ' + a; }).join('<br>') + '</div>' : '') +
     '<div class="tbl-wrap" style="margin-top:12px;"><table class="tbl"><thead><tr>' +
@@ -3459,8 +3519,14 @@ function mostrarModalNomina(datos, nombreArchivo){
       var nuevos = datos.jugadores.slice(0, NOMINA_MAX);
 
       if (reemplazar){
-        var quitados = STATE.jugadores.filter(function(j){ return j.teamId === equipo.id; }).map(function(j){ return j.id; });
-        STATE.jugadores = STATE.jugadores.filter(function(j){ return j.teamId !== equipo.id; });
+        /* Solo se reemplazan los jugadores: el cuerpo técnico se mantiene, salvo
+           que se marque cargarlo de nuevo desde el formulario. */
+        var quitados = STATE.jugadores.filter(function(j){
+          return j.teamId === equipo.id && (!j.cargo || j.cargo === 'Jugador');
+        }).map(function(j){ return j.id; });
+        STATE.jugadores = STATE.jugadores.filter(function(j){
+          return !(j.teamId === equipo.id && (!j.cargo || j.cargo === 'Jugador'));
+        });
         /* Los jugadores reemplazados salen también de las planillas guardadas */
         Object.keys(STATE.planillas || {}).forEach(function(mid){
           var pl = STATE.planillas[mid] || {};
@@ -3477,6 +3543,28 @@ function mostrarModalNomina(datos, nombreArchivo){
           rut: j.rut, nacionalidad: j.nacionalidad, fechaNac: j.fechaNac, estado: 'Activo'
         });
       });
+
+      if (form.cuerpo && form.cuerpo.checked){
+        var staff = [
+          { nombre: datos.dt, cargo: 'Director técnico', contacto: datos.contactoDt },
+          { nombre: datos.delegado1, cargo: 'Persona delegada', contacto: datos.contacto1 },
+          { nombre: datos.delegado2, cargo: 'Persona delegada', contacto: datos.contacto2 }
+        ].filter(function(x){ return x.nombre; });
+        staff.forEach(function(x){
+          var yaEsta = STATE.jugadores.filter(function(j){
+            return j.teamId === equipo.id && j.cargo !== 'Jugador' && normTexto(j.nombre) === normTexto(x.nombre);
+          })[0];
+          if (yaEsta){
+            yaEsta.cargo = x.cargo;
+            if (x.contacto) yaEsta.contacto = x.contacto;
+          } else {
+            STATE.jugadores.push({
+              id: uid('pl'), teamId: equipo.id, dorsal: 0, nombre: x.nombre, cargo: x.cargo,
+              contacto: x.contacto || '', rut: '', nacionalidad: '', fechaNac: '', estado: 'Activo'
+            });
+          }
+        });
+      }
 
       if (form.contactos && form.contactos.checked && esAdmin()){
         if (datos.delegado1) equipo.delegado = datos.delegado1;
