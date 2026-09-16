@@ -660,7 +660,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.11-4';
+var APP_VERSION = 'v2026.09.11-5';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -980,6 +980,7 @@ function switchTab(tab){
   document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.toggle('active', p.id === 'panel-' + tab); });
   var t = TAB_TITLES[tab];
   if (t){ document.getElementById('topTitle').textContent = t[0]; document.getElementById('topSub').textContent = t[1]; }
+  if (CURRENT_TAB === 'planilla' && tab !== 'planilla' && typeof detenerEscuchaFirmas === 'function') detenerEscuchaFirmas();
   CURRENT_TAB = tab;
   renderCurrentTab();
 }
@@ -2123,7 +2124,7 @@ function renderPlanillaLado(matchId, teamId, lado){
   return '<div class="card">' +
     '<div class="card-head"><h3>' + teamLogoHtml(equipo) + ' ' + escapeHtml(equipo ? equipo.nombre : '—') + '</h3>' +
     '<span class="muted" style="font-size:12px;">' + jugadores.filter(function(j){return (planilla[lado][j.id]||{}).asiste;}).length + ' asisten · ' +
-      '<b class="' + (acred.asisten && acred.firmados === acred.asisten ? 'txt-green' : '') + '">' +
+      '<b class="acred-contador" data-team="' + teamId + '" data-lado="' + lado + '">' +
       acred.firmados + '/' + acred.asisten + ' acreditados</b></span></div>' +
     '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Asiste</th><th>Dorsal</th><th>Nombre</th><th>Cargo</th><th>Acreditación</th></tr></thead>' +
     '<tbody>' + rows + '</tbody></table></div>' +
@@ -2138,6 +2139,7 @@ function renderPlanillaLado(matchId, teamId, lado){
 
 function renderPlanilla(){
   var panel = document.getElementById('panel-planilla');
+  capturarFormAccion();   // antes de rehacer el panel completo
   var opciones = STATE.partidos.slice().sort(function(a,b){return a.numero-b.numero;}).map(function(p){
     return '<option value="'+p.id+'"'+(p.id===PLANILLA_SELECTED_MATCH?' selected':'')+'>'+escapeHtml(matchLabel(p))+'</option>';
   }).join('');
@@ -2163,7 +2165,9 @@ RENDERERS.planilla = renderPlanilla;
 function renderPlanillaBody(){
   var body = document.getElementById('planillaBody');
   if (!body) return;
+  capturarFormAccion();
   if (!PLANILLA_SELECTED_MATCH){
+    detenerEscuchaFirmas();
     body.innerHTML = '<div class="card"><div class="empty-hint">Elija un partido para ver su planilla.</div></div>';
     renderActaBody();
     return;
@@ -2186,6 +2190,8 @@ function renderPlanillaBody(){
     });
     return;
   }
+  /* Quedamos atentos a las firmas que lleguen desde otros dispositivos */
+  escucharFirmas(p.id);
 
   var faltan = jugadoresPorAcreditar(p.id);
   body.innerHTML =
@@ -2194,7 +2200,7 @@ function renderPlanillaBody(){
       '<p class="desc" style="margin:2px 0 0;">Cada jugador firma con el dedo junto a su nombre. Se registra la hora y ' +
       'el usuario que recibió la firma. Reemplaza la firma en la planilla impresa.</p></div>' +
       '<div class="row-flex">' +
-        '<span class="pill ' + (faltan ? 'pill-gold' : 'pill-green') + '">' +
+        '<span class="pill ' + (faltan ? 'pill-gold' : 'pill-green') + '" id="acredPill">' +
           (faltan ? faltan + ' por acreditar' : 'Todos acreditados') + '</span>' +
         '<button class="btn btn-ghost btn-xs" id="btnImprimirAcred">🖨️ Hoja de acreditación</button>' +
       '</div>' +
@@ -2562,11 +2568,34 @@ function causalSelectHtml(prefix){
 /* Tras registrar una acción el formulario se redibuja en blanco */
 var FORM_ACCION_LIMPIO = false;
 
+/* Lo que la mesa tiene a medio escribir en el registro del partido. Se conserva
+   entre redibujados para que una sincronización desde otro dispositivo (por
+   ejemplo una firma desde el celular) no borre lo que está anotando. */
+var FORM_ACCION_ESTADO = null;
+
+function capturarFormAccion(){
+  var form = document.getElementById('accionForm');
+  if (!form) return;
+  var dorsal = document.getElementById('dorsalInput');
+  var tipo = document.getElementById('tipoSelect');
+  var sancion = document.getElementById('sancionSelect');
+  FORM_ACCION_ESTADO = {
+    lado: form.lado ? form.lado.value : null,
+    dorsal: dorsal ? dorsal.value : '',
+    tipo: tipo ? tipo.value : null,
+    minuto: form.minuto ? form.minuto.value : '',
+    sancion: sancion ? sancion.value : null,
+    causal: form.querySelector('.acc-causal') ? form.querySelector('.acc-causal').value : '',
+    detalle: form.querySelector('.acc-detalle') ? form.querySelector('.acc-detalle').value : ''
+  };
+}
+
 /* El registro del partido ya no es una pestaña: se dibuja dentro de la Planilla
    de Juego, sobre el mismo partido que la mesa tiene abierto. */
 function renderActaBody(){
   var body = document.getElementById('actaBody');
   if (!body) return;
+  capturarFormAccion();
   if (!PLANILLA_SELECTED_MATCH){ body.innerHTML = ''; return; }
   var p = getPartido(STATE, PLANILLA_SELECTED_MATCH);
   if (!p){ body.innerHTML = ''; return; }
@@ -2749,8 +2778,28 @@ function renderActaBody(){
     if (d) fijarSancion(d.partidos || 0);
   });
   refreshDorsales(); refreshTipoUI();
+
+  /* Se restituye lo que estaba escrito antes del redibujado */
+  if (FORM_ACCION_ESTADO && !FORM_ACCION_LIMPIO){
+    var prev = FORM_ACCION_ESTADO;
+    if (prev.lado && form.lado) form.lado.value = prev.lado;
+    if (prev.tipo && tipoSelect) tipoSelect.value = prev.tipo;
+    refreshDorsales();
+    refreshTipoUI();
+    if (prev.causal){
+      var selC = form.querySelector('.acc-causal');
+      if (selC){ selC.value = prev.causal; selC.dispatchEvent(new Event('change')); }
+      var selD = form.querySelector('.acc-detalle');
+      if (selD && prev.detalle) selD.value = prev.detalle;
+    }
+    if (prev.sancion && sancionSelect && prev.sancion !== 'otro') sancionSelect.value = prev.sancion;
+    if (prev.minuto && form.minuto) form.minuto.value = prev.minuto;
+    if (prev.dorsal && dorsalInput){ dorsalInput.value = prev.dorsal; resolverJugador(); }
+  }
+
   if (FORM_ACCION_LIMPIO){
     FORM_ACCION_LIMPIO = false;
+    FORM_ACCION_ESTADO = null;
     form.lado.selectedIndex = 0;
     tipoSelect.selectedIndex = 0;
     form.minuto.value = '';
@@ -3699,6 +3748,83 @@ function cargarFirmas(matchId){
   });
 }
 
+/* ---------------------------------------------------------------------------
+   TIEMPO REAL: la planilla abierta escucha su documento de firmas, de modo que
+   lo que firma un jugador en el celular aparece solo en el computador de la
+   mesa, sin recargar. Se refrescan únicamente las celdas de acreditación y los
+   contadores, para no borrar lo que la mesa esté escribiendo en el registro
+   del partido.
+--------------------------------------------------------------------------- */
+var FIRMAS_ESCUCHA = null;       // función para cancelar la escucha activa
+var FIRMAS_ESCUCHANDO = null;    // partido que se está escuchando
+
+function detenerEscuchaFirmas(){
+  if (FIRMAS_ESCUCHA){ try { FIRMAS_ESCUCHA(); } catch (e) {} }
+  FIRMAS_ESCUCHA = null;
+  FIRMAS_ESCUCHANDO = null;
+}
+
+function escucharFirmas(matchId){
+  if (!FIRMAS_DB || !matchId) return;
+  if (FIRMAS_ESCUCHANDO === matchId) return;   // ya está escuchando este partido
+  detenerEscuchaFirmas();
+  FIRMAS_ESCUCHANDO = matchId;
+  FIRMAS_ESCUCHA = FIRMAS_DB.collection(FIREBASE_FIRMAS_COL).doc(matchId)
+    .onSnapshot({ includeMetadataChanges: true }, function(snap){
+      if (snap.metadata.hasPendingWrites) return;   // eco de nuestra propia firma
+      if (!snap.exists) return;
+      var raw = snap.data();
+      if (!raw || !raw.json) return;
+      var entrantes;
+      try { entrantes = JSON.parse(raw.json); } catch (e) { return; }
+
+      var antes = Object.keys(firmasDe(matchId)).length;
+      var ahora = Object.keys(entrantes).length;
+      FIRMAS_CACHE[matchId] = entrantes;
+      FIRMAS_CARGADAS[matchId] = true;
+      try { localStorage.setItem(firmasClaveLocal(matchId), raw.json); } catch (e) {}
+
+      if (PLANILLA_SELECTED_MATCH === matchId && CURRENT_TAB === 'planilla'){
+        refrescarAcreditacion(matchId);
+        if (ahora > antes) toast('Nueva acreditación firmada.');
+      }
+    }, function(err){
+      console.error('Error escuchando firmas del partido:', err);
+    });
+}
+
+/* Redibuja solo las celdas de acreditación y los contadores del partido */
+function refrescarAcreditacion(matchId){
+  var panel = document.getElementById('panel-planilla');
+  if (!panel) return;
+  var planilla = (STATE.planillas || {})[matchId] || {};
+
+  panel.querySelectorAll('.celda-firma').forEach(function(celda){
+    if (celda.dataset.match !== matchId) return;
+    var jid = celda.dataset.jugador;
+    var j = getJugador(STATE, jid);
+    if (!j) return;
+    var lado = (planilla.local && planilla.local[jid]) ? 'local' : 'visita';
+    var entry = (planilla[lado] || {})[jid] || { asiste: false };
+    celda.innerHTML = contenidoCeldaFirma(matchId, jid, entry.asiste);
+    initFirmasEventos(celda);
+  });
+
+  panel.querySelectorAll('.acred-contador').forEach(function(el){
+    var r = resumenAcreditacion(matchId, el.dataset.team, el.dataset.lado);
+    el.textContent = r.firmados + '/' + r.asisten + ' acreditados';
+    el.classList.toggle('txt-green', r.asisten > 0 && r.firmados === r.asisten);
+  });
+
+  var pill = document.getElementById('acredPill');
+  if (pill){
+    var faltan = jugadoresPorAcreditar(matchId);
+    pill.textContent = faltan ? faltan + ' por acreditar' : 'Todos acreditados';
+    pill.classList.toggle('pill-gold', !!faltan);
+    pill.classList.toggle('pill-green', !faltan);
+  }
+}
+
 function guardarFirmas(matchId){
   var json = JSON.stringify(firmasDe(matchId));
   try { localStorage.setItem(firmasClaveLocal(matchId), json); } catch (e) { /* cuota llena */ }
@@ -3896,17 +4022,24 @@ function resumenAcreditacion(matchId, teamId, lado){
 
 /* Celda de acreditación de cada jugador dentro de la planilla */
 function celdaFirma(matchId, jugadorId, asiste){
-  if (!asiste) return '<td class="muted" style="font-size:11px;">—</td>';
+  return '<td class="celda-firma" data-match="' + matchId + '" data-jugador="' + jugadorId + '">' +
+    contenidoCeldaFirma(matchId, jugadorId, asiste) + '</td>';
+}
+
+/* Contenido interno de la celda, para poder refrescarlo solo a él cuando llega
+   una firma desde otro dispositivo, sin redibujar toda la planilla. */
+function contenidoCeldaFirma(matchId, jugadorId, asiste){
+  if (!asiste) return '<span class="muted" style="font-size:11px;">—</span>';
   var f = firmasDe(matchId)[jugadorId];
   if (f){
-    return '<td style="white-space:nowrap;">' +
+    return '<span style="white-space:nowrap;">' +
       '<button class="btn btn-ghost btn-xs ver-firma" data-match="' + matchId + '" data-jugador="' + jugadorId + '" ' +
         'title="Firmada a las ' + (f.ts||'').slice(11,16) + ' ante ' + escapeHtml(f.autor||'') + '">✅ ' + (f.ts||'').slice(11,16) + '</button>' +
       (puedeEditarAlgo() ? ' <button class="btn btn-ghost btn-xs del-firma" data-match="' + matchId + '" data-jugador="' + jugadorId + '" title="Anular firma">✕</button>' : '') +
-    '</td>';
+    '</span>';
   }
-  if (!puedeEditarAlgo()) return '<td class="muted" style="font-size:11px;">Sin firmar</td>';
-  return '<td><button class="btn btn-ghost btn-xs firmar-btn" data-match="' + matchId + '" data-jugador="' + jugadorId + '">✍️ Firmar</button></td>';
+  if (!puedeEditarAlgo()) return '<span class="muted" style="font-size:11px;">Sin firmar</span>';
+  return '<button class="btn btn-ghost btn-xs firmar-btn" data-match="' + matchId + '" data-jugador="' + jugadorId + '">✍️ Firmar</button>';
 }
 
 function initFirmasEventos(body){
