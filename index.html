@@ -141,6 +141,17 @@
     font-weight:700; cursor:pointer; text-align:left; text-decoration:underline;
     text-decoration-color:rgba(22,143,90,.35); text-underline-offset:3px; }
   .link-btn:hover{ text-decoration-color:var(--green); }
+  /* Reloj del partido y control de cambios */
+  .crono-fila{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .crono-reloj{ font-size:44px; font-weight:800; letter-spacing:1px; font-variant-numeric:tabular-nums;
+    line-height:1; min-width:150px; }
+  .crono-reloj.corriendo{ color:var(--green-dark); }
+  .crono-reloj.excedido{ color:var(--danger); }
+  .crono-botones{ display:flex; gap:6px; flex-wrap:wrap; }
+  .crono-adicion{ display:flex; flex-direction:column; gap:3px; }
+  .camb-panel{ display:flex; gap:22px; flex-wrap:wrap; margin-bottom:12px; }
+  .camb-bloque{ font-size:12px; }
+  .camb-nombre{ font-weight:700; font-size:11.5px; margin-bottom:3px; }
   .txt-red{ color:var(--danger); }
   .txt-green{ color:var(--green-dark); }
   /* Racha de resultados en la tabla de posiciones */
@@ -291,10 +302,11 @@
 
   /* ---------- Print ---------- */
   #printArea{ display:none; }
+  @page{ size:letter portrait; margin:10mm 9mm; }
   @media print{
     body *{ visibility:hidden; }
     #printArea, #printArea *{ visibility:visible; }
-    #printArea{ display:block !important; position:absolute; top:0; left:0; width:100%; padding:24px; color:#000; }
+    #printArea{ display:block !important; position:absolute; top:0; left:0; width:100%; padding:0; color:#000; }
     #printArea h1{ font-size:20px; margin:0 0 2px; }
     #printArea h2{ font-size:14px; border-bottom:2px solid #000; padding-bottom:3px; margin:18px 0 8px; }
     #printArea .sub{ font-size:11px; color:#333; margin-bottom:10px; }
@@ -304,6 +316,40 @@
     #printArea .col{ flex:1; }
     #printArea .summary-grid{ display:flex; gap:18px; flex-wrap:wrap; margin:8px 0 4px; }
     #printArea .summary-item{ border:1px solid #999; border-radius:6px; padding:8px 12px; font-size:11.5px; }
+
+    /* ---------- Planilla de acreditación: una hoja por equipo ----------
+       Medidas ajustadas para que un plantel de 25 jugadores más el cuerpo
+       técnico y el pie de firmas entren completos en una página carta. */
+    #printArea .pl{ font-family:Arial, Helvetica, sans-serif; color:#000; }
+    #printArea .pl .enc{ display:flex; align-items:center; gap:8px; border:1.5px solid #000; padding:4px 6px; }
+    #printArea .pl .esc{ width:38px; height:38px; object-fit:contain; flex:0 0 auto; }
+    #printArea .pl .enc-tx{ flex:1 1 auto; min-width:0; }
+    #printArea .pl .lg{ font-size:8.5px; letter-spacing:.3px; text-transform:uppercase; }
+    #printArea .pl .cl{ font-size:15px; font-weight:bold; line-height:1.1; }
+    #printArea .pl table.datos{ width:auto; border:none; font-size:8px; }
+    #printArea .pl table.datos td{ border:1px solid #000; padding:2px 6px; text-align:center;
+      line-height:1.25; white-space:nowrap; }
+    #printArea .pl table.datos b{ font-size:7.5px; text-transform:uppercase; letter-spacing:.2px; }
+    #printArea .pl .vs{ font-size:9px; font-weight:bold; text-transform:uppercase; letter-spacing:.4px;
+      padding:2px 0 3px; }
+
+    #printArea .pl table.tb{ width:100%; border-collapse:collapse; font-size:9.5px; table-layout:fixed; }
+    #printArea .pl table.tb th{ border:1px solid #000; padding:2px 4px; text-align:left; background:#e8e8e8;
+      font-size:7.5px; text-transform:uppercase; letter-spacing:.2px; }
+    #printArea .pl table.tb td{ border:1px solid #000; padding:1px 4px; height:21px; overflow:hidden;
+      white-space:nowrap; text-overflow:ellipsis; }
+    #printArea .pl table.tb .c{ text-align:center; }
+    #printArea .pl table.tb .b{ font-weight:bold; }
+    #printArea .pl table.tb .fi{ padding:0 2px; }
+    #printArea .pl table.tb .fi img{ height:19px; width:auto; max-width:100%; display:block; margin:0 auto; }
+    #printArea .pl table.tb .w1{ width:22px; }
+    #printArea .pl table.tb .w2{ width:38px; }
+    #printArea .pl table.tb .w3{ width:78px; }
+    #printArea .pl table.tb .w4{ width:104px; }
+    #printArea .pl table.tb .w5{ width:96px; }
+
+    #printArea .pl .st{ font-size:8px; font-weight:bold; text-transform:uppercase; letter-spacing:.3px;
+      margin:5px 0 2px; }
   }
 </style>
 </head>
@@ -662,7 +708,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.21-3';
+var APP_VERSION = 'v2026.09.21-5';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2215,7 +2261,7 @@ function renderPlanillaBody(){
         '<span class="pill ' + estadoSyncFirmas().clase + '" id="syncFirmasPill" title="' + escapeHtml(estadoSyncFirmas().detalle) + '">' +
           estadoSyncFirmas().texto + '</span>' +
         (puedeEditarAlgo() ? '<button class="btn btn-ghost btn-xs" id="btnDiagSync">🔧 Probar sincronización</button>' : '') +
-        '<button class="btn btn-ghost btn-xs" id="btnImprimirAcred">🖨️ Hoja de acreditación</button>' +
+        '<button class="btn btn-ghost btn-xs" id="btnImprimirAcred">🖨️ Imprimir planilla</button>' +
       '</div>' +
     '</div></div>' +
     '<div class="grid-2">' +
@@ -2852,7 +2898,8 @@ function asistentesDeLado(matchId, teamId, lado){
     .sort(function(a,b){ return a.dorsal - b.dorsal; });
 }
 
-var TIPO_LABELS = { gol:'⚽ Gol', autogol:'🥅 Autogol', falta:'🚩 Falta', amarilla:'🟨 Amarilla', roja:'🟥 Roja' };
+var TIPO_LABELS = { gol:'⚽ Gol', autogol:'🥅 Autogol', falta:'🚩 Falta', amarilla:'🟨 Amarilla', roja:'🟥 Roja',
+  sustitucion:'🔄 Sustitución' };
 
 function renderActaHeader(p){
   var t = matchRowTeams(p);
@@ -2877,6 +2924,266 @@ function causalSelectHtml(prefix){
   '</select><select class="' + prefix + '-detalle"><option value="">—</option></select>';
 }
 
+/* ---- ui_cronometro.js ---- */
+/* ============================================================================
+   CRONÓMETRO DEL PARTIDO Y CONTROL DE SUSTITUCIONES
+
+   Bases 2026:
+   - 3.4: dos tiempos de 30 minutos, con entretiempo de 5 minutos.
+   - 3.9: hasta 7 cambios por equipo durante el tiempo reglamentario, en un
+     máximo de 3 momentos (ventanas), sin contar los hechos en el entretiempo.
+
+   El cronómetro lo lleva la mesa a mano (iniciar, pausar, cerrar el tiempo) y
+   corre solo en el dispositivo que lo opera: no se comparte entre dispositivos,
+   porque dos relojes sincronizados por red se desfasan y confunden. El minuto
+   que marca se copia al registrar cada acción, que es lo que sí queda guardado.
+   ============================================================================ */
+
+var MIN_POR_TIEMPO = 30;        // bases 3.4
+var MAX_CAMBIOS = 7;            // bases 3.9
+var MAX_VENTANAS = 3;           // bases 3.9
+
+var CRONO = null;               // { matchId, periodo, base, corriendo, desde, adicion }
+var CRONO_TICK = null;
+
+function cronoClaveLocal(matchId){ return 'ebdb2026_crono_' + matchId; }
+
+function cronoCargar(matchId){
+  if (CRONO && CRONO.matchId === matchId) return CRONO;
+  var guardado = null;
+  try { guardado = JSON.parse(localStorage.getItem(cronoClaveLocal(matchId)) || 'null'); } catch (e) {}
+  CRONO = guardado && guardado.matchId === matchId ? guardado
+    : { matchId: matchId, periodo: 1, base: 0, corriendo: false, desde: 0, adicion: 0 };
+  return CRONO;
+}
+function cronoGuardar(){
+  if (!CRONO) return;
+  try { localStorage.setItem(cronoClaveLocal(CRONO.matchId), JSON.stringify(CRONO)); } catch (e) {}
+}
+
+/* Segundos jugados en el período en curso */
+function cronoSegundos(){
+  if (!CRONO) return 0;
+  var s = CRONO.base;
+  if (CRONO.corriendo) s += Math.floor((Date.now() - CRONO.desde) / 1000);
+  return s;
+}
+
+/* Minuto del partido para el registro de acciones: en el segundo tiempo se
+   cuenta desde el 31, como en la planilla de papel. */
+function cronoMinutoPartido(){
+  var min = Math.floor(cronoSegundos() / 60) + 1;
+  if (!CRONO) return min;
+  if (CRONO.periodo === 2) min += MIN_POR_TIEMPO;
+  return min;
+}
+
+function cronoTexto(){
+  var s = cronoSegundos();
+  var mm = Math.floor(s / 60), ss = s % 60;
+  return (mm < 10 ? '0' : '') + mm + ':' + (ss < 10 ? '0' : '') + ss;
+}
+
+function cronoEtiquetaPeriodo(){
+  if (!CRONO) return '1er tiempo';
+  return CRONO.periodo === 1 ? '1er tiempo' : '2do tiempo';
+}
+
+/* Minuto reglamentario del período, más la adición acordada */
+function cronoLimite(){
+  return (MIN_POR_TIEMPO + (CRONO ? CRONO.adicion : 0)) * 60;
+}
+
+function cronoIniciarPausar(){
+  if (!CRONO) return;
+  if (CRONO.corriendo){
+    CRONO.base = cronoSegundos();
+    CRONO.corriendo = false;
+  } else {
+    CRONO.desde = Date.now();
+    CRONO.corriendo = true;
+  }
+  cronoGuardar();
+  cronoRefrescar();
+}
+
+function cronoAjustarAdicion(delta){
+  if (!CRONO) return;
+  CRONO.adicion = Math.max(0, Math.min(30, CRONO.adicion + delta));
+  cronoGuardar();
+  cronoRefrescar();
+}
+
+function cronoCambiarPeriodo(){
+  if (!CRONO) return;
+  var siguiente = CRONO.periodo === 1 ? 2 : 1;
+  confirmModal({
+    title: siguiente === 2 ? 'Cerrar el primer tiempo' : 'Volver al primer tiempo',
+    html: siguiente === 2
+      ? '<p>El reloj vuelve a 00:00 para el segundo tiempo y las acciones se registrarán desde el minuto ' +
+        (MIN_POR_TIEMPO + 1) + '.</p><p>Los cambios hechos en el entretiempo no consumen ventana (bases 3.9): ' +
+        'márquelos con la casilla <strong>Entretiempo</strong> al registrarlos.</p>'
+      : '<p>El reloj vuelve al primer tiempo desde 00:00. Use esto solo si se cambió de período por error.</p>',
+    okText: siguiente === 2 ? 'Cerrar primer tiempo' : 'Volver al primero',
+    onOk: function(){
+      CRONO.periodo = siguiente;
+      CRONO.base = 0; CRONO.adicion = 0; CRONO.corriendo = false; CRONO.desde = 0;
+      cronoGuardar();
+      cronoRefrescar();
+      toast(siguiente === 2 ? 'Segundo tiempo listo para comenzar.' : 'Reloj devuelto al primer tiempo.');
+    }
+  });
+}
+
+function cronoReiniciar(){
+  confirmModal({
+    title: 'Reiniciar el reloj',
+    html: '<p>El reloj vuelve a 00:00 en el ' + cronoEtiquetaPeriodo().toLowerCase() + ', sin adición. ' +
+          'Las acciones ya registradas no se modifican.</p>',
+    okText: 'Reiniciar', okClass: 'btn-danger',
+    onOk: function(){
+      CRONO.base = 0; CRONO.corriendo = false; CRONO.desde = 0; CRONO.adicion = 0;
+      cronoGuardar();
+      cronoRefrescar();
+    }
+  });
+}
+
+/* Refresca solo el reloj y su estado, sin redibujar la planilla */
+function cronoRefrescar(){
+  var caja = document.getElementById('cronoCaja');
+  if (!caja){ if (CRONO_TICK){ clearInterval(CRONO_TICK); CRONO_TICK = null; } return; }
+  var rel = document.getElementById('cronoReloj');
+  var bot = document.getElementById('cronoBtn');
+  var est = document.getElementById('cronoEstado');
+  var adi = document.getElementById('cronoAdicion');
+  if (rel){
+    rel.textContent = cronoTexto();
+    rel.classList.toggle('corriendo', !!(CRONO && CRONO.corriendo));
+    rel.classList.toggle('excedido', cronoSegundos() >= cronoLimite());
+  }
+  if (bot) bot.textContent = (CRONO && CRONO.corriendo) ? '⏸ Pausar' : '▶ Iniciar';
+  if (est){
+    var s = cronoSegundos(), lim = cronoLimite();
+    est.textContent = cronoEtiquetaPeriodo() + ' · ' +
+      (s >= lim ? 'tiempo cumplido' : 'quedan ' + Math.max(0, Math.ceil((lim - s) / 60)) + ' min') +
+      ' · minuto ' + cronoMinutoPartido();
+  }
+  if (adi) adi.textContent = (CRONO && CRONO.adicion ? '+' + CRONO.adicion : '0') + ' min';
+
+  /* El campo Minuto del registro sigue al reloj, salvo que la mesa lo haya
+     escrito a mano: en ese caso manda lo que escribió. */
+  var campoMin = document.querySelector('#accionForm input[name="minuto"]');
+  if (campoMin && CRONO && !campoMin.dataset.manual && (CRONO.corriendo || CRONO.base > 0)){
+    campoMin.value = cronoMinutoPartido();
+  }
+
+  if (CRONO && CRONO.corriendo && !CRONO_TICK){
+    CRONO_TICK = setInterval(cronoRefrescar, 1000);
+  } else if ((!CRONO || !CRONO.corriendo) && CRONO_TICK){
+    clearInterval(CRONO_TICK); CRONO_TICK = null;
+  }
+}
+
+function cronoHtml(matchId){
+  cronoCargar(matchId);
+  return '<div class="card" id="cronoCaja">' +
+    '<div class="card-head"><div><h3>Reloj del partido</h3>' +
+    '<p class="desc" style="margin:2px 0 0;">Dos tiempos de 30 minutos (bases 3.4). Lo lleva la mesa a mano y corre solo ' +
+    'en este dispositivo; el minuto que marca se copia al registrar cada acción.</p></div></div>' +
+    '<div class="crono-fila">' +
+      '<div class="crono-reloj" id="cronoReloj">' + cronoTexto() + '</div>' +
+      '<div class="crono-botones">' +
+        '<button class="btn btn-primary btn-xs" id="cronoBtn">▶ Iniciar</button>' +
+        '<button class="btn btn-ghost btn-xs" id="cronoPeriodo">⏭ ' +
+          (CRONO.periodo === 1 ? 'Cerrar 1er tiempo' : 'Volver al 1er tiempo') + '</button>' +
+        '<button class="btn btn-ghost btn-xs" id="cronoReset">↺ Reiniciar</button>' +
+      '</div>' +
+      '<div class="crono-adicion">' +
+        '<span class="muted" style="font-size:11px;">Adición</span>' +
+        '<div class="row-flex" style="gap:4px;align-items:center;">' +
+          '<button class="btn btn-ghost btn-xs" id="cronoMenos">−</button>' +
+          '<b id="cronoAdicion" style="min-width:52px;text-align:center;">' +
+            (CRONO.adicion ? '+' + CRONO.adicion : '0') + ' min</b>' +
+          '<button class="btn btn-ghost btn-xs" id="cronoMas">+</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="muted" id="cronoEstado" style="font-size:11.5px;margin-top:6px;"></div>' +
+  '</div>';
+}
+
+function initCronoEventos(){
+  var b = document.getElementById('cronoBtn');
+  if (b) b.addEventListener('click', cronoIniciarPausar);
+  var pr = document.getElementById('cronoPeriodo');
+  if (pr) pr.addEventListener('click', cronoCambiarPeriodo);
+  var rs = document.getElementById('cronoReset');
+  if (rs) rs.addEventListener('click', cronoReiniciar);
+  var mas = document.getElementById('cronoMas');
+  if (mas) mas.addEventListener('click', function(){ cronoAjustarAdicion(1); });
+  var menos = document.getElementById('cronoMenos');
+  if (menos) menos.addEventListener('click', function(){ cronoAjustarAdicion(-1); });
+  cronoRefrescar();
+}
+
+/* ---------------------------------------------------------------------------
+   SUSTITUCIONES: conteo de cambios y de ventanas por equipo
+--------------------------------------------------------------------------- */
+
+/* Los cambios de un mismo equipo hechos en el mismo minuto son una sola ventana.
+   Los del entretiempo no consumen ventana (bases 3.9). */
+function resumenCambios(matchId, lado){
+  var acta = (STATE.actas || {})[matchId];
+  if (!acta) return { cambios: 0, ventanas: 0, minutos: [] };
+  var subs = (acta.acciones || []).filter(function(a){ return a.tipo === 'sustitucion' && a.lado === lado; });
+  var minutosVentana = {};
+  subs.forEach(function(a){
+    if (a.entretiempo) return;
+    minutosVentana[a.minuto === null || a.minuto === '' ? 's/m' : a.minuto] = true;
+  });
+  return {
+    cambios: subs.length,
+    ventanas: Object.keys(minutosVentana).length,
+    entretiempo: subs.filter(function(a){ return a.entretiempo; }).length
+  };
+}
+
+function avisoCambios(matchId, lado, nuevoMinuto, enEntretiempo){
+  var r = resumenCambios(matchId, lado);
+  var avisos = [];
+  if (r.cambios + 1 > MAX_CAMBIOS){
+    avisos.push('Con este cambio el equipo llega a ' + (r.cambios + 1) + ', sobre el máximo de ' +
+      MAX_CAMBIOS + ' que permiten las bases (3.9).');
+  }
+  if (!enEntretiempo){
+    var acta = (STATE.actas || {})[matchId];
+    var yaEnEseMinuto = ((acta || {}).acciones || []).some(function(a){
+      return a.tipo === 'sustitucion' && a.lado === lado && !a.entretiempo && String(a.minuto) === String(nuevoMinuto);
+    });
+    if (!yaEnEseMinuto && r.ventanas + 1 > MAX_VENTANAS){
+      avisos.push('Sería la ventana N°' + (r.ventanas + 1) + ' del equipo, sobre el máximo de ' +
+        MAX_VENTANAS + ' momentos que permiten las bases (3.9).');
+    }
+  }
+  return avisos;
+}
+
+function panelCambios(matchId, t){
+  function bloque(lado, nombre){
+    var r = resumenCambios(matchId, lado);
+    var claseC = r.cambios > MAX_CAMBIOS ? 'pill-red' : r.cambios === MAX_CAMBIOS ? 'pill-gold' : 'pill-muted';
+    var claseV = r.ventanas > MAX_VENTANAS ? 'pill-red' : r.ventanas === MAX_VENTANAS ? 'pill-gold' : 'pill-muted';
+    return '<div class="camb-bloque">' +
+      '<div class="camb-nombre">' + escapeHtml(nombre) + '</div>' +
+      '<span class="pill ' + claseC + '">' + r.cambios + '/' + MAX_CAMBIOS + ' cambios</span> ' +
+      '<span class="pill ' + claseV + '">' + r.ventanas + '/' + MAX_VENTANAS + ' ventanas</span>' +
+      (r.entretiempo ? ' <span class="muted" style="font-size:11px;">(' + r.entretiempo + ' en entretiempo)</span>' : '') +
+    '</div>';
+  }
+  return '<div class="camb-panel">' + bloque('local', t.localNombre) + bloque('visita', t.visitaNombre) + '</div>';
+}
+
 /* Tras registrar una acción el formulario se redibuja en blanco */
 var FORM_ACCION_LIMPIO = false;
 
@@ -2891,9 +3198,13 @@ function capturarFormAccion(){
   var dorsal = document.getElementById('dorsalInput');
   var tipo = document.getElementById('tipoSelect');
   var sancion = document.getElementById('sancionSelect');
+  var entra = document.getElementById('entraInput');
+  var et = document.getElementById('etChk');
   FORM_ACCION_ESTADO = {
     lado: form.lado ? form.lado.value : null,
     dorsal: dorsal ? dorsal.value : '',
+    entra: entra ? entra.value : '',
+    entretiempo: et ? !!et.checked : false,
     tipo: tipo ? tipo.value : null,
     minuto: form.minuto ? form.minuto.value : '',
     sancion: sancion ? sancion.value : null,
@@ -2934,11 +3245,19 @@ function renderActaBody(){
          un jugador puede usar otro número ese día. */
       var reg = planilla && planilla[a.lado] ? planilla[a.lado][a.playerId] : null;
       var dorsalFila = reg && reg.dorsal ? reg.dorsal : (j ? j.dorsal : '?');
+      /* En una sustitución, la fila muestra quién sale y quién entra */
+      var jEntra = a.playerEntra ? getJugador(STATE, a.playerEntra) : null;
+      var regE = (jEntra && planilla && planilla[a.lado]) ? planilla[a.lado][a.playerEntra] : null;
+      var dorsalEntra = regE && regE.dorsal ? regE.dorsal : (jEntra ? jEntra.dorsal : '');
       return '<tr>' +
         '<td>' + (a.lado==='local' ? '<span class="pill pill-A">Local</span>' : '<span class="pill pill-B">Visita</span>') + '</td>' +
-        '<td>#' + dorsalFila + '</td>' +
-        '<td>' + escapeHtml(j?j.nombre:'—') + '</td>' +
-        '<td>' + (TIPO_LABELS[a.tipo]||a.tipo) + (a.detalle ? '<div class="muted" style="font-size:11px;">'+escapeHtml(a.detalle)+'</div>' : '') + '</td>' +
+        '<td>#' + dorsalFila + (jEntra ? '<div class="muted" style="font-size:11px;">#' + dorsalEntra + '</div>' : '') + '</td>' +
+        '<td>' + (jEntra ? '<span style="color:var(--danger);">▼</span> ' : '') + escapeHtml(j?j.nombre:'—') +
+          (jEntra ? '<div style="font-size:11.5px;"><span style="color:var(--green-dark);">▲</span> ' +
+            escapeHtml(jEntra.nombre) + '</div>' : '') + '</td>' +
+        '<td>' + (TIPO_LABELS[a.tipo]||a.tipo) +
+          (a.tipo === 'sustitucion' && a.entretiempo ? '<div class="muted" style="font-size:11px;">Entretiempo</div>' : '') +
+          (a.detalle ? '<div class="muted" style="font-size:11px;">'+escapeHtml(a.detalle)+'</div>' : '') + '</td>' +
         '<td>' + (a.minuto!==null && a.minuto!=='' ? a.minuto + "'" : '—') + '</td>' +
         '<td>' + (a.partidos ? '<span class="pill pill-red">' + etiquetaSuspension(a.partidos) + '</span>' : '—') + '</td>' +
         '<td><button class="btn btn-ghost btn-xs del-accion" data-id="'+a.id+'">🗑️</button></td>' +
@@ -2951,8 +3270,10 @@ function renderActaBody(){
   }
 
   body.innerHTML =
+    cronoHtml(p.id) +
     '<div class="card">' +
       '<h3 style="margin-bottom:10px;">Registro del partido</h3>' +
+      panelCambios(p.id, t) +
       '<div class="row-flex" style="justify-content:space-between;">' +
         '<div style="font-size:26px;font-weight:800;">' + marcador.local + ' <span class="muted" style="font-size:16px;">—</span> ' + marcador.visita + '</div>' +
         '<div class="row-flex">' +
@@ -2969,7 +3290,7 @@ function renderActaBody(){
           '<option value="local">' + escapeHtml(t.localNombre) + ' (Local)</option>' +
           '<option value="visita">' + escapeHtml(t.visitaNombre) + ' (Visita)</option>' +
         '</select></div>' +
-        '<div class="field"><label>Jugadores</label>' +
+        '<div class="field"><label id="lblJugadores">Jugadores</label>' +
           '<input class="txt-input" id="dorsalInput" list="dorsalesLista" autocomplete="off" ' +
             'placeholder="N° o nombre" style="width:210px;">' +
           '<datalist id="dorsalesLista"></datalist>' +
@@ -2978,7 +3299,18 @@ function renderActaBody(){
         '<div class="field"><label>Acción</label><select name="tipo" id="tipoSelect">' +
           '<option value="gol">⚽ Gol</option><option value="autogol">🥅 Autogol</option><option value="falta">🚩 Falta</option>' +
           '<option value="amarilla">🟨 Amarilla</option><option value="roja">🟥 Roja</option>' +
+          '<option value="sustitucion">🔄 Sustitución</option>' +
         '</select></div>' +
+        '<div class="field hidden" id="entraWrap"><label>Entra</label>' +
+          '<input class="txt-input" id="entraInput" list="entraLista" autocomplete="off" ' +
+            'placeholder="N° o nombre" style="width:210px;">' +
+          '<datalist id="entraLista"></datalist>' +
+          '<div class="muted" id="entraElegido" style="font-size:11px;margin-top:3px;">Quién entra a la cancha</div>' +
+        '</div>' +
+        '<div class="field hidden" id="etWrap"><label>Entretiempo</label>' +
+          '<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:32px;">' +
+            '<input type="checkbox" id="etChk"> No consume ventana</label>' +
+        '</div>' +
         '<div class="field hidden" id="causalWrap"><label>Causal / Detalle</label><div class="row-flex">' + causalSelectHtml('acc') + '</div></div>' +
         '<div class="field"><label>Minuto</label><input class="txt-input" type="number" name="minuto" style="width:80px;" min="0" max="70"></div>' +
         '<div class="field"><label>Sanción</label><select name="sancion" id="sancionSelect">' + suspensionOpcionesHtml(0) + '</select></div>' +
@@ -2988,6 +3320,8 @@ function renderActaBody(){
       '<div class="tbl-wrap" style="margin-top:14px;"><table class="tbl"><thead><tr><th>Equipo</th><th>Dorsal</th><th>Jugador</th><th>Acción</th><th>Min.</th><th>Sanción</th><th></th></tr></thead>' +
       '<tbody>' + accionesFilas() + '</tbody></table></div>' +
     '</div>';
+
+  initCronoEventos();
 
   var form = document.getElementById('accionForm');
   var dorsalInput = document.getElementById('dorsalInput');
@@ -3008,6 +3342,7 @@ function renderActaBody(){
     dorsalInput.value = '';
     PLAYER_ID_SEL = null;
     mostrarElegido();
+    if (typeof refreshEntra === 'function' && esSustitucion()) refreshEntra();
   }
 
   /* Resuelve el jugador a partir de lo escrito: si es solo un número, busca ese
@@ -3043,10 +3378,72 @@ function renderActaBody(){
       jugadorElegido.style.color = '';
     }
   }
+  var entraWrap = document.getElementById('entraWrap');
+  var entraInput = document.getElementById('entraInput');
+  var entraLista = document.getElementById('entraLista');
+  var entraElegido = document.getElementById('entraElegido');
+  var etWrap = document.getElementById('etWrap');
+  var etChk = document.getElementById('etChk');
+  var lblJugadores = document.getElementById('lblJugadores');
+  var PLAYER_ENTRA_SEL = null;
+
+  function esSustitucion(){ return tipoSelect.value === 'sustitucion'; }
+
   function refreshTipoUI(){
     var showCausal = tipoSelect.value === 'amarilla' || tipoSelect.value === 'roja';
     causalWrap.classList.toggle('hidden', !showCausal);
     if (showCausal) filtrarCausalesPorTarjeta(tipoSelect.value);
+    var sub = esSustitucion();
+    entraWrap.classList.toggle('hidden', !sub);
+    etWrap.classList.toggle('hidden', !sub);
+    if (lblJugadores) lblJugadores.textContent = sub ? 'Sale' : 'Jugadores';
+    if (dorsalInput) dorsalInput.placeholder = sub ? 'Quién sale' : 'N° o nombre';
+    if (sub) refreshEntra();
+  }
+
+  /* Quien entra también sale de los asistentes del mismo equipo */
+  function refreshEntra(){
+    if (!entraLista) return;
+    entraLista.innerHTML = listaLado().map(function(x){
+      return '<option value="' + x.dorsal + ' — ' + escapeHtml(x.jugador.nombre) + '"></option>';
+    }).join('');
+    entraInput.value = '';
+    PLAYER_ENTRA_SEL = null;
+    mostrarEntra();
+  }
+  function resolverEntra(){
+    var txt = (entraInput.value || '').trim();
+    var lista = listaLado();
+    PLAYER_ENTRA_SEL = null;
+    if (txt){
+      var hallado;
+      if (/^\d+$/.test(txt)){
+        hallado = lista.filter(function(x){ return String(x.dorsal) === txt; })[0];
+      } else {
+        var norm = normTexto(txt);
+        hallado = lista.filter(function(x){ return normTexto(x.dorsal + ' — ' + x.jugador.nombre) === norm; })[0] ||
+                  lista.filter(function(x){ return normTexto(x.jugador.nombre).indexOf(norm) !== -1; })[0];
+      }
+      if (hallado) PLAYER_ENTRA_SEL = hallado.jugador.id;
+    }
+    mostrarEntra();
+  }
+  function mostrarEntra(){
+    var j = getJugador(STATE, PLAYER_ENTRA_SEL);
+    if (j){
+      entraElegido.textContent = '✓ ' + j.nombre;
+      entraElegido.style.color = 'var(--green-dark)';
+    } else if ((entraInput.value || '').trim()){
+      entraElegido.textContent = 'Ese dorsal no está entre los asistentes';
+      entraElegido.style.color = 'var(--danger)';
+    } else {
+      entraElegido.textContent = 'Quién entra a la cancha';
+      entraElegido.style.color = '';
+    }
+  }
+  if (entraInput){
+    entraInput.addEventListener('input', resolverEntra);
+    entraInput.addEventListener('change', resolverEntra);
   }
   /* Amonestación y expulsión son listas distintas (Regla 12): el desplegable
      ofrece solo las causales que corresponden a la tarjeta mostrada. */
@@ -3090,6 +3487,17 @@ function renderActaBody(){
     if (d) fijarSancion(d.partidos || 0);
   });
   refreshDorsales(); refreshTipoUI();
+  /* El minuto llega propuesto desde el reloj del partido y se sigue
+     actualizando mientras corre, hasta que la mesa lo escriba a mano. */
+  if (form.minuto){
+    form.minuto.addEventListener('input', function(){
+      if (form.minuto.value === '') delete form.minuto.dataset.manual;
+      else form.minuto.dataset.manual = '1';
+    });
+    if (!form.minuto.value && CRONO && CRONO.matchId === p.id && (CRONO.corriendo || CRONO.base > 0)){
+      form.minuto.value = cronoMinutoPartido();
+    }
+  }
 
   /* Se restituye lo que estaba escrito antes del redibujado */
   if (FORM_ACCION_ESTADO && !FORM_ACCION_LIMPIO){
@@ -3107,6 +3515,8 @@ function renderActaBody(){
     if (prev.sancion && sancionSelect && prev.sancion !== 'otro') sancionSelect.value = prev.sancion;
     if (prev.minuto && form.minuto) form.minuto.value = prev.minuto;
     if (prev.dorsal && dorsalInput){ dorsalInput.value = prev.dorsal; resolverJugador(); }
+    if (prev.entra && entraInput){ entraInput.value = prev.entra; resolverEntra(); }
+    if (etChk) etChk.checked = !!prev.entretiempo;
   }
 
   if (FORM_ACCION_LIMPIO){
@@ -3115,9 +3525,16 @@ function renderActaBody(){
     form.lado.selectedIndex = 0;
     tipoSelect.selectedIndex = 0;
     form.minuto.value = '';
+    delete form.minuto.dataset.manual;
+    if (etChk) etChk.checked = false;
+    if (entraInput){ entraInput.value = ''; PLAYER_ENTRA_SEL = null; }
     fijarSancion(0);
     refreshDorsales();
     refreshTipoUI();
+    /* El reloj vuelve a proponer el minuto para la acción siguiente */
+    if (form.minuto && CRONO && CRONO.matchId === p.id && (CRONO.corriendo || CRONO.base > 0)){
+      form.minuto.value = cronoMinutoPartido();
+    }
     dorsalInput.focus();
   }
 
@@ -3125,23 +3542,59 @@ function renderActaBody(){
     e.preventDefault();
     resolverJugador();
     if (!PLAYER_ID_SEL){
-      toast(listaLado().length ? 'Indique el dorsal del jugador.' : 'No hay jugadores asistentes para ese equipo.', true);
+      toast(listaLado().length
+        ? (esSustitucion() ? 'Indique el dorsal del jugador que sale.' : 'Indique el dorsal del jugador.')
+        : 'No hay jugadores asistentes para ese equipo.', true);
       dorsalInput.focus();
       return;
+    }
+    if (esSustitucion()){
+      resolverEntra();
+      if (!PLAYER_ENTRA_SEL){ toast('Indique el dorsal del jugador que entra.', true); entraInput.focus(); return; }
+      if (PLAYER_ENTRA_SEL === PLAYER_ID_SEL){ toast('El jugador que entra no puede ser el mismo que sale.', true); return; }
     }
     var d = findDetalle(accCausal.value, accDetalle.value);
     var nuevaAccion = {
       id: uid('acc'), lado: form.lado.value, playerId: PLAYER_ID_SEL, tipo: tipoSelect.value,
-      minuto: form.minuto.value === '' ? null : Number(form.minuto.value),
+      minuto: form.minuto.value !== '' ? Number(form.minuto.value)
+        : (CRONO && CRONO.matchId === p.id && (CRONO.corriendo || CRONO.base > 0) ? cronoMinutoPartido() : null),
       causal: accCausal.value || null, detalle: accDetalle.value || null, multa: d ? d.multa : 0,
       partidos: sancionSelect.value === 'otro' ? sancionLibre : (Number(sancionSelect.value) || 0),
       enviadaSanciones: false
     };
+    if (esSustitucion()){
+      nuevaAccion.playerEntra = PLAYER_ENTRA_SEL;
+      nuevaAccion.entretiempo = !!(etChk && etChk.checked);
+      nuevaAccion.partidos = 0;
+      nuevaAccion.multa = 0;
+      nuevaAccion.causal = null;
+      nuevaAccion.detalle = null;
+      /* Las bases limitan los cambios y los momentos: se avisa antes de guardar */
+      var avisos = avisoCambios(p.id, nuevaAccion.lado, nuevaAccion.minuto, nuevaAccion.entretiempo);
+      if (avisos.length){
+        var eq = nuevaAccion.lado === 'local' ? t.localNombre : t.visitaNombre;
+        confirmModal({
+          title: '⚠️ Límite de cambios',
+          html: '<p><strong>' + escapeHtml(eq) + '</strong></p>' +
+                avisos.map(function(a){ return '<p>' + a + '</p>'; }).join('') +
+                '<p>Puede registrarlo igual si la organización lo autoriza; quedará anotado en el acta para revisión.</p>',
+          okText: 'Registrar de todas formas', okClass: 'btn-danger',
+          onOk: function(){ guardarAccionPartido(nuevaAccion); }
+        });
+        return;
+      }
+    }
+    guardarAccionPartido(nuevaAccion);
+  });
+
+  function guardarAccionPartido(nuevaAccion){
     acta.acciones.push(nuevaAccion);
 
     var jugadorAccion = getJugador(STATE, nuevaAccion.playerId);
+    var entraAccion = getJugador(STATE, nuevaAccion.playerEntra);
     logActivity('Acción registrada en Acta', 'Partido N°' + p.numero + ': ' + (TIPO_LABELS[nuevaAccion.tipo]||nuevaAccion.tipo) +
-      ' — #' + (jugadorAccion?jugadorAccion.dorsal:'?') + ' ' + (jugadorAccion?jugadorAccion.nombre:'—'));
+      ' — ' + (jugadorAccion?jugadorAccion.nombre:'—') +
+      (entraAccion ? ' sale, entra ' + entraAccion.nombre : ''));
 
     if (nuevaAccion.tipo === 'amarilla'){
       var previas = amarillasPrevias(nuevaAccion.playerId);
@@ -3153,8 +3606,8 @@ function renderActaBody(){
        eligiendo todo desde el principio, sin arrastrar lo anterior. */
     FORM_ACCION_LIMPIO = true;
     renderAll();
-    toast('Acción registrada.');
-  });
+    toast(nuevaAccion.tipo === 'sustitucion' ? 'Sustitución registrada.' : 'Acción registrada.');
+  }
 
   body.querySelectorAll('.del-accion').forEach(function(btn){
     btn.addEventListener('click', function(){
@@ -3182,6 +3635,7 @@ function renderActaBody(){
     /* Van a Sanciones las rojas y también cualquier otra acción con multa o
        fechas de suspensión indicadas (por ejemplo una falta con sanción). */
     var pendientes = acta.acciones.filter(function(a){
+      if (a.tipo === 'sustitucion') return false;
       return !a.enviadaSanciones && (a.tipo === 'roja' || (a.partidos || 0) > 0 || (a.multa || 0) > 0);
     });
     if (!pendientes.length){ toast('No hay sanciones nuevas por enviar.'); return; }
@@ -4482,32 +4936,99 @@ function imprimirAcreditacion(matchId){
   var planilla = (STATE.planillas || {})[matchId] || {};
   var firmas = firmasDe(matchId);
 
-  function bloque(teamId, lado){
+  /* Una hoja por equipo. Los campos van comprimidos para que un plantel
+     completo (25 jugadores) quepa en una sola página junto al cuerpo técnico. */
+  function hoja(teamId, lado, rivalNombre, ultima){
     var equipo = getEquipo(STATE, teamId);
-    var filas = Object.keys(planilla[lado] || {}).filter(function(jid){
+    var presentes = Object.keys(planilla[lado] || {}).filter(function(jid){
       var j = getJugador(STATE, jid);
       return planilla[lado][jid].asiste && j && j.teamId === teamId;
     }).map(function(jid){
-      var j = getJugador(STATE, jid);
-      var f = firmas[jid];
-      return '<tr><td>' + (planilla[lado][jid].dorsal || '') + '</td><td>' + escapeHtml(j.nombre) + '</td>' +
-        '<td>' + (j.fechaNac ? fmtDateEs(j.fechaNac) : '') + '</td>' +
-        '<td>' + escapeHtml(j.rut || '') + '</td>' +
-        '<td>' + (f ? '<img src="' + f.img + '" style="height:34px;">' : '') + '</td>' +
-        '<td>' + (f ? (f.ts || '').slice(11,16) : 'Sin firmar') + '</td></tr>';
+      return { jid: jid, j: getJugador(STATE, jid), dorsal: planilla[lado][jid].dorsal || '' };
+    });
+
+    var jugadores = presentes.filter(function(x){ return !x.j.cargo || x.j.cargo === 'Jugador'; })
+      .sort(function(a,b){ return (Number(a.dorsal)||99) - (Number(b.dorsal)||99); });
+    var staff = presentes.filter(function(x){ return x.j.cargo && x.j.cargo !== 'Jugador'; });
+
+    /* Todo el cuerpo técnico del club, asista o no, para que la planilla sirva
+       de registro completo de quiénes pueden estar en la banca. */
+    var staffIds = {};
+    staff.forEach(function(x){ staffIds[x.jid] = true; });
+    STATE.jugadores.forEach(function(j){
+      if (j.teamId === teamId && j.cargo && j.cargo !== 'Jugador' && !staffIds[j.id]){
+        staff.push({ jid: j.id, j: j, dorsal: '' });
+      }
+    });
+
+    function filaJugador(x, i){
+      var f = firmas[x.jid];
+      return '<tr>' +
+        '<td class="c b">' + (x.dorsal || '') + '</td>' +
+        '<td>' + escapeHtml(x.j.nombre) + '</td>' +
+        '<td class="c">' + (x.j.fechaNac ? fmtDateEs(x.j.fechaNac) : '') + '</td>' +
+        '<td class="c">' + escapeHtml(x.j.rut || '') + '</td>' +
+        '<td class="fi">' + (f ? '<img src="' + f.img + '">' : '') + '</td>' +
+      '</tr>';
+    }
+    /* Filas en blanco para inscribir a mano a quien llegue después */
+    function filaVacia(){
+      return '<tr><td></td><td></td><td></td><td></td><td class="fi"></td></tr>';
+    }
+
+    var filasJug = jugadores.map(filaJugador).join('');
+    for (var k = 0; k < 3; k++) filasJug += filaVacia();
+
+    var filasStaff = staff.map(function(x){
+      var f = firmas[x.jid];
+      return '<tr>' +
+        '<td>' + escapeHtml(x.j.nombre) + '</td>' +
+        '<td class="c">' + escapeHtml(x.j.cargo || '') + '</td>' +
+        '<td class="c">' + escapeHtml(x.j.rut || '') + '</td>' +
+        '<td class="c">' + escapeHtml(x.j.contacto || '') + '</td>' +
+        '<td class="fi">' + (f ? '<img src="' + f.img + '">' : '') + '</td>' +
+      '</tr>';
     }).join('');
-    return '<h2>' + escapeHtml(equipo ? equipo.nombre : '—') + '</h2>' +
-      '<table><thead><tr><th>Dorsal</th><th>Jugador</th><th>F. Nacimiento</th><th>RUT</th><th>Firma</th><th>Hora</th></tr></thead><tbody>' +
-      (filas || '<tr><td colspan="6">Sin jugadores acreditados.</td></tr>') + '</tbody></table>';
+    for (var s = staff.length; s < 3; s++){
+      filasStaff += '<tr><td></td><td class="c"></td><td class="c"></td><td class="c"></td><td class="fi"></td></tr>';
+    }
+
+    var escudo = equipo && equipo.logo ? '<img class="esc" src="' + equipo.logo + '">' : '';
+
+    return '<section class="pl"' + (ultima ? '' : ' style="page-break-after:always;"') + '>' +
+      '<div class="enc">' +
+        escudo +
+        '<div class="enc-tx">' +
+          '<div class="lg">Liga de Fútbol Estrellas de Barrio 2026 · Peñalolén</div>' +
+          '<div class="cl">' + escapeHtml(equipo ? equipo.nombre : '—') + '</div>' +
+        '</div>' +
+        '<table class="datos"><tr>' +
+          '<td><b>Partido N°</b><br>' + p.numero + '</td>' +
+          '<td><b>Grupo</b><br>' + (p.grupo || '—') + '</td>' +
+          '<td><b>Fecha</b><br>' + escapeHtml(p.jornada) + '</td>' +
+          '<td><b>Día</b><br>' + (p.dia ? fmtDateEs(p.dia) : '') + '</td>' +
+          '<td><b>Hora</b><br>' + (p.hora || '') + '</td>' +
+        '</tr></table>' +
+      '</div>' +
+      '<div class="vs">' + (lado === 'local' ? 'LOCAL' : 'VISITA') + ' · vs ' + escapeHtml(rivalNombre || '—') + '</div>' +
+
+      '<table class="tb"><thead><tr>' +
+        '<th class="w2">Dorsal</th><th>Nómina de jugadores</th>' +
+        '<th class="w3">Fecha Nac.</th><th class="w3">C. Identidad</th><th class="w4">Firma</th>' +
+      '</tr></thead><tbody>' + filasJug + '</tbody></table>' +
+
+      '<div class="st">Cuerpo técnico y personas delegadas</div>' +
+      '<table class="tb"><thead><tr>' +
+        '<th>Nombre</th><th class="w5">Cargo</th><th class="w3">C. Identidad</th><th class="w5">Contacto</th><th class="w4">Firma</th>' +
+      '</tr></thead><tbody>' + filasStaff + '</tbody></table>' +
+
+    '</section>';
   }
 
   var area = document.getElementById('printArea');
   area.innerHTML =
-    '<h1>Acreditación de jugadores — Liga de Fútbol Estrellas de Barrio 2026</h1>' +
-    '<p>Partido N°' + p.numero + ' · ' + escapeHtml(p.jornada) + ' · ' + (p.dia ? fmtDateEs(p.dia) : '') + ' ' + (p.hora || '') + '</p>' +
-    bloque(t.localId, 'local') + bloque(t.visitaId, 'visita') +
-    '<p style="margin-top:18px;font-size:11px;">Documento generado el ' + fmtDateEs(isoDate(new Date())) +
-    '. Las firmas fueron tomadas digitalmente en la plataforma, con registro de hora y del usuario que las recibió.</p>';
+    hoja(t.localId, 'local', t.visitaNombre, false) +
+    hoja(t.visitaId, 'visita', t.localNombre, true);
   window.print();
 }
 
