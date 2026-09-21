@@ -152,6 +152,12 @@
   .camb-panel{ display:flex; gap:22px; flex-wrap:wrap; margin-bottom:12px; }
   .camb-bloque{ font-size:12px; }
   .camb-nombre{ font-weight:700; font-size:11.5px; margin-bottom:3px; }
+  .cerrado-aviso{ background:var(--gold-soft); color:var(--gold-dark); font-size:12.5px; font-weight:700; }
+  /* Un partido cerrado se ve, pero no se toca (salvo administrador) */
+  body.partido-cerrado #panel-planilla input,
+  body.partido-cerrado #panel-planilla select:not(#planillaMatchSel),
+  body.partido-cerrado #panel-planilla button:not(#btnActaPdf):not(#btnVolverProg):not(#btnImprimirAcred):not(#cronoBtn):not(#cronoPeriodo):not(#cronoReset):not(#cronoMas):not(#cronoMenos){
+    pointer-events:none; opacity:.5; }
   .txt-red{ color:var(--danger); }
   .txt-green{ color:var(--green-dark); }
   /* Racha de resultados en la tabla de posiciones */
@@ -304,9 +310,13 @@
   #printArea{ display:none; }
   @page{ size:letter portrait; margin:10mm 9mm; }
   @media print{
-    body *{ visibility:hidden; }
+    /* Se ocultan por completo (display:none) el resto de los bloques de la
+       página: con visibility:hidden seguían ocupando alto y salían hojas
+       en blanco al final de cada impresión. */
+    html, body{ background:#fff !important; height:auto !important; overflow:visible !important; }
+    body > *{ display:none !important; }
     #printArea, #printArea *{ visibility:visible; }
-    #printArea{ display:block !important; position:absolute; top:0; left:0; width:100%; padding:0; color:#000; }
+    #printArea{ display:block !important; position:static; width:100%; padding:0; color:#000; }
     #printArea h1{ font-size:20px; margin:0 0 2px; }
     #printArea h2{ font-size:14px; border-bottom:2px solid #000; padding-bottom:3px; margin:18px 0 8px; }
     #printArea .sub{ font-size:11px; color:#333; margin-bottom:10px; }
@@ -347,6 +357,29 @@
     #printArea .pl table.tb .w3{ width:78px; }
     #printArea .pl table.tb .w4{ width:104px; }
     #printArea .pl table.tb .w5{ width:96px; }
+
+    /* ---------- Acta del partido ---------- */
+    #printArea .acta{ font-family:Arial, Helvetica, sans-serif; color:#000; }
+    #printArea .acta .ac-enc{ border-bottom:2px solid #000; padding-bottom:4px; margin-bottom:6px; }
+    #printArea .acta .ac-lg{ font-size:9px; text-transform:uppercase; letter-spacing:.4px; }
+    #printArea .acta .ac-tt{ font-size:18px; font-weight:bold; }
+    #printArea .acta table.ac-datos{ width:100%; border-collapse:collapse; font-size:8.5px; margin-bottom:8px; }
+    #printArea .acta table.ac-datos td{ border:1px solid #000; padding:3px 6px; text-align:center; line-height:1.3; }
+    #printArea .acta table.ac-datos b{ font-size:7.5px; text-transform:uppercase; letter-spacing:.2px; }
+    #printArea .acta .ac-marcador{ display:flex; align-items:center; justify-content:center; gap:20px;
+      border:1.5px solid #000; padding:8px; margin-bottom:10px; font-size:13px; }
+    #printArea .acta .ac-marcador b{ font-size:24px; }
+    #printArea .acta .ac-sub{ font-size:9.5px; font-weight:bold; text-transform:uppercase; letter-spacing:.3px;
+      margin:10px 0 3px; }
+    #printArea .acta table.ac-tb{ width:100%; border-collapse:collapse; font-size:9px; }
+    #printArea .acta table.ac-tb th{ border:1px solid #000; padding:3px 5px; background:#e8e8e8; text-align:left;
+      font-size:8px; text-transform:uppercase; letter-spacing:.2px; }
+    #printArea .acta table.ac-tb td{ border:1px solid #000; padding:3px 5px; }
+    #printArea .acta table.ac-tb .c{ text-align:center; }
+    #printArea .acta .ac-cierre{ font-size:8.5px; margin-top:10px; font-style:italic; }
+    #printArea .acta .ac-firmas{ display:flex; gap:16px; margin-top:26px; }
+    #printArea .acta .ac-fl{ flex:1; font-size:8px; text-align:center; }
+    #printArea .acta .ac-ln{ border-top:1px solid #000; margin-bottom:2px; }
 
     #printArea .pl .st{ font-size:8px; font-weight:bold; text-transform:uppercase; letter-spacing:.3px;
       margin:5px 0 2px; }
@@ -708,7 +741,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.21-5';
+var APP_VERSION = 'v2026.09.21-6';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2250,8 +2283,11 @@ function renderPlanillaBody(){
   escucharFirmas(p.id);
 
   var faltan = jugadoresPorAcreditar(p.id);
+  var cerrado = partidoCerrado(p.id);
   body.innerHTML =
     renderActaHeader(p) +
+    (cerrado ? '<div class="card cerrado-aviso">🔒 Este partido está cerrado: el acta quedó en firme y no admite ' +
+      'cambios.' + (esAdmin() ? ' Puede reabrirlo desde el botón al final del registro.' : '') + '</div>' : '') +
     '<div class="card"><div class="card-head"><div><h3>Acreditación del partido</h3>' +
       '<p class="desc" style="margin:2px 0 0;">Cada jugador firma con el dedo junto a su nombre. Se registra la hora y ' +
       'el usuario que recibió la firma. Reemplaza la firma en la planilla impresa.</p></div>' +
@@ -3184,6 +3220,263 @@ function panelCambios(matchId, t){
   return '<div class="camb-panel">' + bloque('local', t.localNombre) + bloque('visita', t.visitaNombre) + '</div>';
 }
 
+/* ---- ui_cierre_partido.js ---- */
+/* ============================================================================
+   CIERRE DEL PARTIDO Y ACTA EN PDF
+
+   Cerrar un partido deja el acta en firme: se aplica el resultado a
+   Programación, se registra quién cerró y cuándo, y la planilla queda
+   bloqueada para edición. Solo el administrador puede reabrirla, porque
+   después del cierre el acta es el respaldo del resultado ante un reclamo.
+   ============================================================================ */
+
+function partidoCerrado(matchId){
+  var acta = (STATE.actas || {})[matchId];
+  return !!(acta && acta.cerrado);
+}
+
+function puedeEditarActa(matchId){
+  if (!puedeEditarAlgo()) return false;
+  return !partidoCerrado(matchId) || esAdmin();
+}
+
+/* Revisa lo que suele quedar pendiente antes de cerrar */
+function pendientesDeCierre(matchId){
+  var p = getPartido(STATE, matchId);
+  var acta = (STATE.actas || {})[matchId] || { acciones: [] };
+  var avisos = [];
+
+  var faltanFirmas = jugadoresPorAcreditar(matchId);
+  if (faltanFirmas) avisos.push(faltanFirmas + ' jugador(es) asistente(s) sin firmar la acreditación.');
+
+  var m = marcadorDesdeActa(STATE, matchId);
+  var cargado = p && p.golesLocal !== null && p.golesLocal !== undefined && p.golesLocal !== '';
+  if (cargado && (Number(p.golesLocal) !== m.local || Number(p.golesVisita) !== m.visita)){
+    avisos.push('El resultado en Programación (' + p.golesLocal + '-' + p.golesVisita + ') no coincide con el acta (' +
+      m.local + '-' + m.visita + '). Al cerrar se guardará el del acta.');
+  }
+
+  var sancionesPend = (acta.acciones || []).filter(function(a){
+    if (a.tipo === 'sustitucion') return false;
+    return !a.enviadaSanciones && (a.tipo === 'roja' || (a.partidos || 0) > 0 || (a.multa || 0) > 0);
+  }).length;
+  if (sancionesPend) avisos.push(sancionesPend + ' sanción(es) del acta aún no enviadas al Historial de Sanciones.');
+
+  if (!(acta.acciones || []).length) avisos.push('El acta no tiene ninguna acción registrada.');
+
+  return avisos;
+}
+
+function cerrarPartido(matchId){
+  var p = getPartido(STATE, matchId);
+  if (!p) return;
+  var t = matchRowTeams(p);
+  var acta = ensureActa(matchId);
+  var m = marcadorDesdeActa(STATE, matchId);
+  var avisos = pendientesDeCierre(matchId);
+
+  confirmModal({
+    title: '🔒 Cerrar el partido',
+    html:
+      '<p>Partido N°' + p.numero + ' · <strong>' + escapeHtml(t.localNombre) + ' ' + m.local + ' — ' +
+        m.visita + ' ' + escapeHtml(t.visitaNombre) + '</strong></p>' +
+      '<p>Al cerrar se guarda el resultado en Programación y el acta queda en firme: la planilla y el registro ' +
+      'dejan de poder editarse. Solo el administrador puede reabrirla.</p>' +
+      (avisos.length
+        ? '<div style="margin-top:10px;padding:9px 11px;border-radius:8px;background:var(--gold-soft);color:var(--gold-dark);font-size:12px;">' +
+          '<strong>Antes de cerrar, revise:</strong><br>' + avisos.map(function(a){ return '• ' + a; }).join('<br>') + '</div>'
+        : '<div style="margin-top:10px;padding:9px 11px;border-radius:8px;background:var(--green-soft);color:var(--green-dark);font-size:12px;">' +
+          'No quedan pendientes: acreditación completa y sanciones enviadas.</div>'),
+    okText: 'Cerrar partido',
+    onOk: function(){
+      p.golesLocal = m.local;
+      p.golesVisita = m.visita;
+      acta.resultadoAplicado = true;
+      acta.cerrado = true;
+      acta.cerradoEn = new Date().toISOString();
+      acta.cerradoPor = getAutor();
+      logActivity('Partido cerrado', 'N°' + p.numero + ': ' + t.localNombre + ' ' + m.local + ' — ' +
+        m.visita + ' ' + t.visitaNombre);
+      renderAll();
+      renderCurrentTab();
+      toast('Partido cerrado. El resultado quedó guardado en Programación.');
+    }
+  });
+}
+
+function reabrirPartido(matchId){
+  var p = getPartido(STATE, matchId);
+  var acta = ensureActa(matchId);
+  confirmModal({
+    title: 'Reabrir el partido',
+    html: '<p>El acta del partido N°' + (p ? p.numero : '?') + ' volverá a quedar editable.</p>' +
+          '<p>Fue cerrada por <strong>' + escapeHtml(acta.cerradoPor || '—') + '</strong> el ' +
+          fmtDateEs((acta.cerradoEn || '').slice(0,10)) + ' a las ' + (acta.cerradoEn || '').slice(11,16) + '. ' +
+          'La reapertura queda registrada en el Historial de Actividad.</p>',
+    okText: 'Reabrir', okClass: 'btn-danger',
+    onOk: function(){
+      acta.cerrado = false;
+      acta.reabiertoEn = new Date().toISOString();
+      acta.reabiertoPor = getAutor();
+      logActivity('Partido reabierto', 'N°' + (p ? p.numero : '?'));
+      renderAll();
+      renderCurrentTab();
+      toast('Partido reabierto.');
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------------
+   ACTA DEL PARTIDO PARA IMPRIMIR O GUARDAR COMO PDF
+--------------------------------------------------------------------------- */
+function imprimirActa(matchId){
+  var p = getPartido(STATE, matchId);
+  if (!p) return;
+  var t = matchRowTeams(p);
+  var acta = (STATE.actas || {})[matchId] || { acciones: [] };
+  var planilla = (STATE.planillas || {})[matchId] || {};
+  var m = marcadorDesdeActa(STATE, matchId);
+
+  function dorsalDe(a, playerId){
+    var reg = planilla[a.lado] ? planilla[a.lado][playerId] : null;
+    var j = getJugador(STATE, playerId);
+    return (reg && reg.dorsal) ? reg.dorsal : (j ? j.dorsal : '');
+  }
+  function nombreDe(playerId){
+    var j = getJugador(STATE, playerId);
+    return j ? j.nombre : '—';
+  }
+
+  var acciones = (acta.acciones || []).slice().sort(function(a,b){
+    var ma = a.minuto === null || a.minuto === '' ? 999 : Number(a.minuto);
+    var mb = b.minuto === null || b.minuto === '' ? 999 : Number(b.minuto);
+    return ma - mb;
+  });
+
+  var filas = acciones.map(function(a){
+    var equipo = a.lado === 'local' ? t.localNombre : t.visitaNombre;
+    var detalle = '';
+    if (a.tipo === 'sustitucion'){
+      detalle = 'Sale #' + dorsalDe(a, a.playerId) + ' ' + nombreDe(a.playerId) +
+        ' · Entra #' + dorsalDe(a, a.playerEntra) + ' ' + nombreDe(a.playerEntra) +
+        (a.entretiempo ? ' (entretiempo)' : '');
+    } else {
+      detalle = '#' + dorsalDe(a, a.playerId) + ' ' + nombreDe(a.playerId);
+      if (a.detalle) detalle += ' — ' + a.detalle;
+      if (a.partidos) detalle += ' · ' + etiquetaSuspension(a.partidos);
+      if (a.multa) detalle += ' · ' + fmtMoney(a.multa);
+    }
+    return '<tr>' +
+      '<td class="c">' + (a.minuto !== null && a.minuto !== '' ? a.minuto + "'" : '—') + '</td>' +
+      '<td class="c">' + escapeHtml(equipo) + '</td>' +
+      '<td class="c">' + (TIPO_LABELS[a.tipo] || a.tipo).replace(/^[^\s]+\s/, '') + '</td>' +
+      '<td>' + escapeHtml(detalle) + '</td>' +
+    '</tr>';
+  }).join('') || '<tr><td colspan="4" class="c">Sin acciones registradas.</td></tr>';
+
+  function resumenEquipo(lado, nombre){
+    var r = resumenCambios(matchId, lado);
+    var goles = acciones.filter(function(a){ return a.tipo === 'gol' && a.lado === lado; }).length;
+    var autogoles = acciones.filter(function(a){ return a.tipo === 'autogol' && a.lado === lado; }).length;
+    var am = acciones.filter(function(a){ return a.tipo === 'amarilla' && a.lado === lado; }).length;
+    var ro = acciones.filter(function(a){ return a.tipo === 'roja' && a.lado === lado; }).length;
+    return '<tr>' +
+      '<td>' + escapeHtml(nombre) + '</td>' +
+      '<td class="c">' + goles + '</td>' +
+      '<td class="c">' + autogoles + '</td>' +
+      '<td class="c">' + am + '</td>' +
+      '<td class="c">' + ro + '</td>' +
+      '<td class="c">' + r.cambios + ' / ' + MAX_CAMBIOS + '</td>' +
+      '<td class="c">' + r.ventanas + ' / ' + MAX_VENTANAS + (r.entretiempo ? ' (+' + r.entretiempo + ' ET)' : '') + '</td>' +
+    '</tr>';
+  }
+
+  var area = document.getElementById('printArea');
+  area.innerHTML =
+    '<section class="acta">' +
+      '<div class="ac-enc">' +
+        '<div class="ac-lg">Liga de Fútbol Estrellas de Barrio 2026 · Peñalolén</div>' +
+        '<div class="ac-tt">Acta del partido</div>' +
+      '</div>' +
+      '<table class="ac-datos"><tr>' +
+        '<td><b>Partido N°</b><br>' + p.numero + '</td>' +
+        '<td><b>Grupo</b><br>' + (p.grupo || '—') + '</td>' +
+        '<td><b>Fecha</b><br>' + escapeHtml(p.jornada) + '</td>' +
+        '<td><b>Día</b><br>' + (p.dia ? fmtDateEs(p.dia) : '') + '</td>' +
+        '<td><b>Hora</b><br>' + (p.hora || '') + '</td>' +
+        '<td><b>Estado</b><br>' + (acta.cerrado ? 'Cerrado' : 'Abierto') + '</td>' +
+      '</tr></table>' +
+
+      '<div class="ac-marcador">' +
+        '<span>' + escapeHtml(t.localNombre) + '</span>' +
+        '<b>' + m.local + ' — ' + m.visita + '</b>' +
+        '<span>' + escapeHtml(t.visitaNombre) + '</span>' +
+      '</div>' +
+
+      '<div class="ac-sub">Resumen por equipo</div>' +
+      '<table class="ac-tb"><thead><tr>' +
+        '<th>Equipo</th><th class="c">Goles</th><th class="c">Autogoles</th><th class="c">Amarillas</th>' +
+        '<th class="c">Rojas</th><th class="c">Cambios</th><th class="c">Ventanas</th>' +
+      '</tr></thead><tbody>' +
+        resumenEquipo('local', t.localNombre) + resumenEquipo('visita', t.visitaNombre) +
+      '</tbody></table>' +
+
+      '<div class="ac-sub">Detalle cronológico de acciones</div>' +
+      '<table class="ac-tb"><thead><tr>' +
+        '<th class="c" style="width:44px;">Min.</th><th class="c" style="width:130px;">Equipo</th>' +
+        '<th class="c" style="width:88px;">Acción</th><th>Detalle</th>' +
+      '</tr></thead><tbody>' + filas + '</tbody></table>' +
+
+      (acta.cerrado
+        ? '<div class="ac-cierre">Acta cerrada por ' + escapeHtml(acta.cerradoPor || '—') + ' el ' +
+          fmtDateEs((acta.cerradoEn || '').slice(0,10)) + ' a las ' + (acta.cerradoEn || '').slice(11,16) + '.</div>'
+        : '<div class="ac-cierre">Acta aún no cerrada: el detalle puede cambiar.</div>') +
+
+      '<div class="ac-firmas">' +
+        '<div class="ac-fl"><div class="ac-ln"></div>Árbitro</div>' +
+        '<div class="ac-fl"><div class="ac-ln"></div>Delegado ' + escapeHtml(t.localNombre) + '</div>' +
+        '<div class="ac-fl"><div class="ac-ln"></div>Delegado ' + escapeHtml(t.visitaNombre) + '</div>' +
+        '<div class="ac-fl"><div class="ac-ln"></div>Coordinación</div>' +
+      '</div>' +
+    '</section>';
+  window.print();
+}
+
+/* Tarjeta de cierre al pie del registro del partido */
+function tarjetaCierre(matchId, t){
+  var cerrado = partidoCerrado(matchId);
+  var acta = (STATE.actas || {})[matchId] || {};
+  return '<div class="card">' +
+    '<div class="card-head"><div><h3>' + (cerrado ? '🔒 Partido cerrado' : 'Fin del encuentro') + '</h3>' +
+      '<p class="desc" style="margin:2px 0 0;">' +
+        (cerrado
+          ? 'Cerrado por ' + escapeHtml(acta.cerradoPor || '—') + ' el ' +
+            fmtDateEs((acta.cerradoEn || '').slice(0,10)) + ' a las ' + (acta.cerradoEn || '').slice(11,16) +
+            '. El resultado quedó guardado en Programación y el acta no admite cambios.'
+          : 'Al cerrar, el resultado del acta se guarda en Programación y la planilla queda en firme.') +
+      '</p></div></div>' +
+    '<div class="row-flex">' +
+      (!cerrado && puedeEditarAlgo()
+        ? '<button class="btn btn-primary" id="btnCerrarPartido">🔒 Cerrar partido</button>' : '') +
+      (cerrado && esAdmin()
+        ? '<button class="btn btn-ghost btn-xs" id="btnReabrirPartido">🔓 Reabrir partido</button>' : '') +
+      '<button class="btn btn-gold" id="btnActaPdf">📄 Acta en PDF</button>' +
+      '<button class="btn btn-ghost" id="btnVolverProg">← Volver a Programación</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function initCierreEventos(matchId){
+  var bc = document.getElementById('btnCerrarPartido');
+  if (bc) bc.addEventListener('click', function(){ cerrarPartido(matchId); });
+  var br = document.getElementById('btnReabrirPartido');
+  if (br) br.addEventListener('click', function(){ reabrirPartido(matchId); });
+  var ba = document.getElementById('btnActaPdf');
+  if (ba) ba.addEventListener('click', function(){ imprimirActa(matchId); });
+  var bv = document.getElementById('btnVolverProg');
+  if (bv) bv.addEventListener('click', function(){ switchTab('programacion'); });
+}
+
 /* Tras registrar una acción el formulario se redibuja en blanco */
 var FORM_ACCION_LIMPIO = false;
 
@@ -3319,9 +3612,11 @@ function renderActaBody(){
       '<div id="dobleAmarillaWarn"></div>' +
       '<div class="tbl-wrap" style="margin-top:14px;"><table class="tbl"><thead><tr><th>Equipo</th><th>Dorsal</th><th>Jugador</th><th>Acción</th><th>Min.</th><th>Sanción</th><th></th></tr></thead>' +
       '<tbody>' + accionesFilas() + '</tbody></table></div>' +
-    '</div>';
+    '</div>' +
+    tarjetaCierre(p.id, t);
 
   initCronoEventos();
+  initCierreEventos(p.id);
 
   var form = document.getElementById('accionForm');
   var dorsalInput = document.getElementById('dorsalInput');
@@ -3540,6 +3835,7 @@ function renderActaBody(){
 
   form.addEventListener('submit', function(e){
     e.preventDefault();
+    if (!puedeEditarActa(p.id)){ toast('El partido está cerrado: no se pueden registrar acciones.', true); return; }
     resolverJugador();
     if (!PLAYER_ID_SEL){
       toast(listaLado().length
@@ -4721,6 +5017,10 @@ function abrirFirmaJugador(matchId, jugadorId){
   var j = getJugador(STATE, jugadorId);
   var p = getPartido(STATE, matchId);
   if (!j || !p) return;
+  if (typeof puedeEditarActa === 'function' && !puedeEditarActa(matchId)){
+    toast('El partido está cerrado: no se pueden tomar más firmas.', true);
+    return;
+  }
   var firmas = firmasDe(matchId);
   var previa = firmas[jugadorId];
 
@@ -5794,6 +6094,9 @@ function aplicarPermisosUI(){
   var rol = rolActual();
   document.body.classList.remove('rol-admin','rol-mesa','rol-general');
   if (rol) document.body.classList.add('rol-' + rol);
+
+  document.body.classList.toggle('partido-cerrado',
+    CURRENT_TAB === 'planilla' && PLANILLA_SELECTED_MATCH && partidoCerrado(PLANILLA_SELECTED_MATCH) && !esAdmin());
 
   var permitidas = TABS_POR_ROL[rol] || [];
   document.querySelectorAll('.tab-btn').forEach(function(b){
