@@ -662,7 +662,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.21-1';
+var APP_VERSION = 'v2026.09.21-2';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2116,12 +2116,12 @@ function renderPlanillaLado(matchId, teamId, lado){
     return '<tr>' +
       '<td><input type="checkbox" class="asiste-chk" data-match="'+matchId+'" data-lado="'+lado+'" data-jugador="'+j.id+'" '+(entry.asiste?'checked':'')+'></td>' +
       '<td><input type="number" class="num-input dorsal-input" data-match="'+matchId+'" data-lado="'+lado+'" data-jugador="'+j.id+'" value="'+entry.dorsal+'"></td>' +
-      '<td>' + escapeHtml(j.nombre) + '</td>' +
-      /* RUT y fecha de nacimiento a la vista para cotejar con el documento al
+      '<td style="min-width:190px;">' + escapeHtml(j.nombre) + '</td>' +
+      /* Fecha de nacimiento y RUT a la vista para cotejar con la cédula al
          acreditar. Son datos del plantel: si se corrigen aquí, quedan
          corregidos también en el Plantel del Club. */
-      '<td><input class="txt-input pl-rut" data-jugador="'+j.id+'" value="'+escapeHtml(j.rut||'')+'" placeholder="RUT" style="width:118px;"></td>' +
       '<td><input class="txt-input pl-fnac" type="date" data-jugador="'+j.id+'" value="'+escapeHtml(j.fechaNac||'')+'"></td>' +
+      '<td><input class="txt-input pl-rut" data-jugador="'+j.id+'" value="'+escapeHtml(j.rut||'')+'" placeholder="12.345.678-9" style="width:130px;"></td>' +
       '<td class="muted" style="font-size:11.5px;">' + escapeHtml(j.cargo) + '</td>' +
       celdaFirma(matchId, j.id, entry.asiste) +
     '</tr>';
@@ -2133,13 +2133,13 @@ function renderPlanillaLado(matchId, teamId, lado){
     '<span class="muted" style="font-size:12px;">' + jugadores.filter(function(j){return (planilla[lado][j.id]||{}).asiste;}).length + ' asisten · ' +
       '<b class="acred-contador" data-team="' + teamId + '" data-lado="' + lado + '">' +
       acred.firmados + '/' + acred.asisten + ' acreditados</b></span></div>' +
-    '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Asiste</th><th>Dorsal</th><th>Nombre</th><th>RUT</th><th>Fecha Nac.</th><th>Cargo</th><th>Acreditación</th></tr></thead>' +
+    '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Asiste</th><th>Dorsal</th><th>Nombre</th><th>F. Nacimiento</th><th>RUT</th><th>Cargo</th><th>Acreditación</th></tr></thead>' +
     '<tbody>' + rows + '</tbody></table></div>' +
     '<form class="add-player-form" data-match="'+matchId+'" data-lado="'+lado+'" data-team="'+teamId+'" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
       '<div class="field"><label>Nombre nuevo jugador</label><input class="txt-input ap-nombre" placeholder="Nombre completo"></div>' +
       '<div class="field"><label>Dorsal</label><input class="txt-input ap-dorsal" type="number" style="width:80px;"></div>' +
+      '<div class="field"><label>F. Nacimiento</label><input class="txt-input ap-fnac" type="date"></div>' +
       '<div class="field"><label>RUT</label><input class="txt-input ap-rut" placeholder="12.345.678-9" style="width:130px;"></div>' +
-      '<div class="field"><label>Fecha Nac.</label><input class="txt-input ap-fnac" type="date"></div>' +
       '<div class="field"><label>Cargo</label><select class="ap-cargo"><option>Jugador</option><option>Cuerpo técnico</option><option>Persona delegada</option></select></div>' +
       '<button type="submit" class="btn btn-primary btn-xs">➕ Inscribir</button>' +
     '</form>' +
@@ -4217,13 +4217,13 @@ function imprimirAcreditacion(matchId){
       var j = getJugador(STATE, jid);
       var f = firmas[jid];
       return '<tr><td>' + (planilla[lado][jid].dorsal || '') + '</td><td>' + escapeHtml(j.nombre) + '</td>' +
-        '<td>' + escapeHtml(j.rut || '') + '</td>' +
         '<td>' + (j.fechaNac ? fmtDateEs(j.fechaNac) : '') + '</td>' +
+        '<td>' + escapeHtml(j.rut || '') + '</td>' +
         '<td>' + (f ? '<img src="' + f.img + '" style="height:34px;">' : '') + '</td>' +
         '<td>' + (f ? (f.ts || '').slice(11,16) : 'Sin firmar') + '</td></tr>';
     }).join('');
     return '<h2>' + escapeHtml(equipo ? equipo.nombre : '—') + '</h2>' +
-      '<table><thead><tr><th>Dorsal</th><th>Jugador</th><th>RUT</th><th>Fecha Nac.</th><th>Firma</th><th>Hora</th></tr></thead><tbody>' +
+      '<table><thead><tr><th>Dorsal</th><th>Jugador</th><th>F. Nacimiento</th><th>RUT</th><th>Firma</th><th>Hora</th></tr></thead><tbody>' +
       (filas || '<tr><td colspan="6">Sin jugadores acreditados.</td></tr>') + '</tbody></table>';
   }
 
