@@ -662,7 +662,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.21-2';
+var APP_VERSION = 'v2026.09.21-3';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2535,27 +2535,301 @@ function renderRankingCard(titulo, icono, campo, colClass){
       '<td>' + teamLogoHtml(r.equipo) + ' ' + escapeHtml(r.jugador.nombre) + '<div class="muted" style="font-size:11px;">#' + r.jugador.dorsal + '</div></td>' +
       '<td>' + escapeHtml(r.equipo ? r.equipo.nombre : '—') + '</td>' +
       '<td style="text-align:center;"><b>' + r.valor + '</b></td>' +
+      (esAdmin() ? '<td><button class="btn btn-ghost btn-xs rk-del" data-jugador="' + r.jugador.id + '" ' +
+        'data-campo="' + campo + '" title="Quitar este registro del ranking">🗑️</button></td>' : '') +
     '</tr>';
   }).join('');
   return '<div class="card">' +
     '<h3>' + icono + ' ' + titulo + '</h3>' +
     (rows.length ?
-      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Jugador</th><th>Equipo</th><th>Total</th></tr></thead>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Jugador</th><th>Equipo</th><th>Total</th>' +
+      (esAdmin() ? '<th></th>' : '') + '</tr></thead>' +
       '<tbody>' + trs + '</tbody></table></div>'
       : '<div class="empty-hint">Aún no hay datos (se alimenta desde el Acta de Partido).</div>') +
   '</div>';
 }
 
+/* ---- ui_limpiar_stats.js ---- */
+/* ============================================================================
+   LIMPIAR DATOS DE GOLEADORES Y TARJETAS
+
+   Los tres rankings no guardan datos propios: se calculan de las acciones
+   registradas en las actas de cada partido. Por eso "limpiar" aquí significa
+   eliminar esas acciones, y hay que decir con claridad qué se borra y qué
+   consecuencias tiene sobre los marcadores ya aplicados.
+   ============================================================================ */
+
+var TIPOS_ACCION = {
+  gol:      { etiqueta: 'Goles',              icono: '⚽' },
+  autogol:  { etiqueta: 'Autogoles',          icono: '🥅' },
+  amarilla: { etiqueta: 'Tarjetas amarillas', icono: '🟨' },
+  roja:     { etiqueta: 'Tarjetas rojas',     icono: '🟥' },
+  falta:    { etiqueta: 'Faltas',             icono: '🚩' }
+};
+
+/* Cuenta las acciones registradas, por tipo, en todo el campeonato o en un partido */
+function contarAcciones(tipos, matchId){
+  var n = 0;
+  Object.keys(STATE.actas || {}).forEach(function(mid){
+    if (matchId && mid !== matchId) return;
+    ((STATE.actas[mid] || {}).acciones || []).forEach(function(a){
+      if (tipos.indexOf(a.tipo) !== -1) n++;
+    });
+  });
+  return n;
+}
+
+/* Partidos cuyo resultado en Programación dejaría de calzar con el acta */
+function partidosConResultadoAfectado(tipos, matchId){
+  if (tipos.indexOf('gol') === -1 && tipos.indexOf('autogol') === -1) return [];
+  var afectados = [];
+  Object.keys(STATE.actas || {}).forEach(function(mid){
+    if (matchId && mid !== matchId) return;
+    var p = getPartido(STATE, mid);
+    if (!p) return;
+    var tieneGoles = ((STATE.actas[mid] || {}).acciones || []).some(function(a){
+      return tipos.indexOf(a.tipo) !== -1 && (a.tipo === 'gol' || a.tipo === 'autogol');
+    });
+    var conResultado = p.golesLocal !== null && p.golesLocal !== undefined && p.golesLocal !== '';
+    if (tieneGoles && conResultado) afectados.push(p);
+  });
+  return afectados;
+}
+
+function eliminarAcciones(tipos, matchId, reajustarMarcadores){
+  var borradas = 0;
+  var tocados = [];
+  Object.keys(STATE.actas || {}).forEach(function(mid){
+    if (matchId && mid !== matchId) return;
+    var acta = STATE.actas[mid];
+    if (!acta || !acta.acciones) return;
+    var antes = acta.acciones.length;
+    acta.acciones = acta.acciones.filter(function(a){ return tipos.indexOf(a.tipo) === -1; });
+    if (acta.acciones.length !== antes){
+      borradas += antes - acta.acciones.length;
+      tocados.push(mid);
+    }
+  });
+
+  if (reajustarMarcadores){
+    tocados.forEach(function(mid){
+      var p = getPartido(STATE, mid);
+      if (!p) return;
+      var m = marcadorDesdeActa(STATE, mid);
+      var quedanGoles = ((STATE.actas[mid] || {}).acciones || []).some(function(a){
+        return a.tipo === 'gol' || a.tipo === 'autogol';
+      });
+      if (quedanGoles){
+        p.golesLocal = m.local;
+        p.golesVisita = m.visita;
+      } else {
+        /* Sin goles en el acta, el partido vuelve a quedar sin resultado */
+        p.golesLocal = null;
+        p.golesVisita = null;
+        if (STATE.actas[mid]) STATE.actas[mid].resultadoAplicado = false;
+      }
+    });
+  }
+  return { borradas: borradas, partidos: tocados.length };
+}
+
+function abrirLimpiarStats(){
+  var opcionesPartido = STATE.partidos.slice().sort(function(a,b){ return a.numero - b.numero; })
+    .filter(function(p){ return ((STATE.actas[p.id] || {}).acciones || []).length; })
+    .map(function(p){
+      var n = (STATE.actas[p.id].acciones || []).length;
+      return '<option value="' + p.id + '">' + escapeHtml(matchLabel(p)) + ' — ' + n + ' acción(es)</option>';
+    }).join('');
+
+  var totalTodo = contarAcciones(Object.keys(TIPOS_ACCION));
+  if (!totalTodo){
+    alertModal('Sin datos que limpiar',
+      '<p>Todavía no hay goles ni tarjetas registrados en ninguna acta, así que no hay nada que eliminar.</p>');
+    return;
+  }
+
+  var body =
+    '<p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Los rankings se calculan desde las acciones ' +
+    'registradas en las actas: al limpiarlos se eliminan esas acciones del partido correspondiente. ' +
+    'Hay ' + totalTodo + ' acción(es) registrada(s) en total.</p>' +
+
+    '<div class="field"><label>Qué eliminar</label>' +
+      '<label style="display:block;font-size:12.5px;margin:4px 0;"><input type="checkbox" name="t_gol" checked> ⚽ Goles y 🥅 autogoles</label>' +
+      '<label style="display:block;font-size:12.5px;margin:4px 0;"><input type="checkbox" name="t_amarilla" checked> 🟨 Tarjetas amarillas</label>' +
+      '<label style="display:block;font-size:12.5px;margin:4px 0;"><input type="checkbox" name="t_roja" checked> 🟥 Tarjetas rojas</label>' +
+      '<label style="display:block;font-size:12.5px;margin:4px 0;"><input type="checkbox" name="t_falta" checked> 🚩 Faltas</label>' +
+    '</div>' +
+
+    '<div class="field" style="margin-top:12px;"><label>Alcance</label>' +
+      '<select name="alcance" style="width:100%;">' +
+        '<option value="todo">Todo el campeonato</option>' +
+        (opcionesPartido ? '<option value="partido">Solo un partido</option>' : '') +
+      '</select></div>' +
+
+    (opcionesPartido ?
+      '<div class="field hidden" id="wrapPartidoLimpiar" style="margin-top:10px;"><label>Partido</label>' +
+      '<select name="partido" style="width:100%;">' + opcionesPartido + '</select></div>' : '') +
+
+    '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:12.5px;">' +
+      '<input type="checkbox" name="reajustar" checked style="margin-top:2px;">' +
+      '<span>Reajustar también los marcadores en Programación' +
+      '<br><span class="muted">Al borrar goles, el resultado del partido se recalcula desde el acta; si el acta queda ' +
+      'sin goles, el partido vuelve a quedar sin resultado y sale de la Tabla de Posiciones.</span></span>' +
+    '</label>' +
+
+    '<div id="resumenLimpiar" style="margin-top:12px;padding:9px 11px;border-radius:8px;background:var(--gold-soft);color:var(--gold-dark);font-size:12px;"></div>';
+
+  formModal({
+    title: '🧹 Limpiar datos de goleadores y tarjetas',
+    okText: 'Eliminar',
+    bodyHtml: body,
+    onMount: function(form){
+      var wrap = document.getElementById('wrapPartidoLimpiar');
+      var resumen = document.getElementById('resumenLimpiar');
+
+      function tiposElegidos(){
+        var t = [];
+        if (form.t_gol.checked){ t.push('gol'); t.push('autogol'); }
+        if (form.t_amarilla.checked) t.push('amarilla');
+        if (form.t_roja.checked) t.push('roja');
+        if (form.t_falta.checked) t.push('falta');
+        return t;
+      }
+      function matchElegido(){
+        return (form.alcance.value === 'partido' && form.partido) ? form.partido.value : null;
+      }
+      function refrescar(){
+        if (wrap) wrap.classList.toggle('hidden', form.alcance.value !== 'partido');
+        var tipos = tiposElegidos();
+        var mid = matchElegido();
+        var n = tipos.length ? contarAcciones(tipos, mid) : 0;
+        var afectados = partidosConResultadoAfectado(tipos, mid);
+        resumen.innerHTML = !n
+          ? 'No hay acciones que coincidan con lo seleccionado.'
+          : 'Se eliminarán <strong>' + n + '</strong> acción(es)' +
+            (mid ? ' del partido elegido' : ' de todo el campeonato') + '.' +
+            (afectados.length ? '<br>Afecta el resultado de <strong>' + afectados.length + '</strong> partido(s) ya cargado(s) en Programación, ' +
+              'y con ello la Tabla de Posiciones.' : '');
+      }
+      ['t_gol','t_amarilla','t_roja','t_falta','alcance'].forEach(function(n){
+        if (form[n]) form[n].addEventListener('change', refrescar);
+      });
+      if (form.partido) form.partido.addEventListener('change', refrescar);
+      refrescar();
+    },
+    onOk: function(form){
+      var tipos = [];
+      if (form.t_gol.checked){ tipos.push('gol'); tipos.push('autogol'); }
+      if (form.t_amarilla.checked) tipos.push('amarilla');
+      if (form.t_roja.checked) tipos.push('roja');
+      if (form.t_falta.checked) tipos.push('falta');
+      if (!tipos.length){ toast('Elija al menos un tipo de dato.', true); return false; }
+
+      var mid = (form.alcance.value === 'partido' && form.partido) ? form.partido.value : null;
+      var n = contarAcciones(tipos, mid);
+      if (!n){ toast('No hay acciones que coincidan con lo seleccionado.', true); return false; }
+
+      var reajustar = form.reajustar.checked;
+      var p = mid ? getPartido(STATE, mid) : null;
+
+      confirmModal({
+        title: 'Confirmar eliminación',
+        html: '<p>Se eliminarán <strong>' + n + '</strong> acción(es) ' +
+              (p ? 'del partido N°' + p.numero : 'de todo el campeonato') + '.</p>' +
+              '<p>Esta acción no se puede deshacer. Si quiere conservar un respaldo, cancele y use antes ' +
+              '<strong>Descargar mis datos (JSON)</strong>.</p>',
+        okText: 'Eliminar definitivamente', okClass: 'btn-danger',
+        onOk: function(){
+          var r = eliminarAcciones(tipos, mid, reajustar);
+          var nombres = tipos.filter(function(t){ return t !== 'autogol'; })
+            .map(function(t){ return TIPOS_ACCION[t] ? TIPOS_ACCION[t].etiqueta : t; }).join(', ');
+          logActivity('Datos de goleadores eliminados',
+            r.borradas + ' acción(es) — ' + nombres + ' — ' +
+            (p ? 'partido N°' + p.numero : 'todo el campeonato') +
+            (reajustar ? ' (marcadores reajustados)' : ''));
+          renderAll();
+          renderCurrentTab();
+          toast(r.borradas + ' acción(es) eliminada(s) de ' + r.partidos + ' partido(s).');
+        }
+      });
+    }
+  });
+}
+
+/* Quita de los rankings todo lo registrado a un jugador para un tipo de acción */
+function limpiarJugadorStats(playerId, tipo){
+  var j = getJugador(STATE, playerId);
+  if (!j) return;
+  var tipos = tipo === 'goles' ? ['gol'] : tipo === 'amarillas' ? ['amarilla'] : ['roja'];
+  var etiqueta = tipo === 'goles' ? 'goles' : tipo === 'amarillas' ? 'tarjetas amarillas' : 'tarjetas rojas';
+  var n = 0;
+  Object.keys(STATE.actas || {}).forEach(function(mid){
+    ((STATE.actas[mid] || {}).acciones || []).forEach(function(a){
+      if (a.playerId === playerId && tipos.indexOf(a.tipo) !== -1) n++;
+    });
+  });
+  if (!n) return;
+
+  confirmModal({
+    title: 'Quitar del ranking',
+    html: '<p>Se eliminarán los <strong>' + n + ' ' + etiqueta + '</strong> registrados a ' +
+          '<strong>' + escapeHtml(j.nombre) + '</strong> en todas las actas del campeonato.</p>' +
+          (tipo === 'goles' ? '<p>Los marcadores de los partidos afectados se recalculan desde el acta.</p>' : '') +
+          '<p>Esta acción no se puede deshacer.</p>',
+    okText: 'Eliminar', okClass: 'btn-danger',
+    onOk: function(){
+      var tocados = [];
+      Object.keys(STATE.actas || {}).forEach(function(mid){
+        var acta = STATE.actas[mid];
+        if (!acta || !acta.acciones) return;
+        var antes = acta.acciones.length;
+        acta.acciones = acta.acciones.filter(function(a){
+          return !(a.playerId === playerId && tipos.indexOf(a.tipo) !== -1);
+        });
+        if (acta.acciones.length !== antes) tocados.push(mid);
+      });
+      if (tipo === 'goles'){
+        tocados.forEach(function(mid){
+          var p = getPartido(STATE, mid);
+          if (!p) return;
+          if (p.golesLocal === null || p.golesLocal === undefined || p.golesLocal === '') return;
+          var m = marcadorDesdeActa(STATE, mid);
+          p.golesLocal = m.local;
+          p.golesVisita = m.visita;
+        });
+      }
+      logActivity('Registro quitado del ranking', j.nombre + ': ' + n + ' ' + etiqueta);
+      renderAll();
+      renderCurrentTab();
+      toast('Registro eliminado.');
+    }
+  });
+}
+
 function renderGoleadores(){
   var panel = document.getElementById('panel-goleadores');
   panel.innerHTML =
-    '<div class="card"><p class="desc" style="margin:0;">Los tres rankings cruzan a los 12 equipos y se alimentan ' +
-    'automáticamente de todas las Actas de Partido aplicadas.</p></div>' +
+    '<div class="card">' +
+      '<div class="card-head"><div><h3>Rankings del campeonato</h3>' +
+      '<p class="desc" style="margin:2px 0 0;">Los tres rankings cruzan a los 12 equipos y se calculan solos desde las ' +
+      'acciones registradas en la planilla de cada partido.</p></div>' +
+      (esAdmin() ? '<button class="btn btn-ghost btn-xs" id="btnLimpiarStats">🧹 Limpiar datos</button>' : '') +
+      '</div>' +
+    '</div>' +
     '<div class="grid-3">' +
       renderRankingCard('Goleadores', '⚽', 'goles') +
       renderRankingCard('Tarjetas Amarillas', '🟨', 'amarillas') +
       renderRankingCard('Tarjetas Rojas', '🟥', 'rojas') +
     '</div>';
+
+  var btnLimpiar = document.getElementById('btnLimpiarStats');
+  if (btnLimpiar) btnLimpiar.addEventListener('click', abrirLimpiarStats);
+
+  panel.querySelectorAll('.rk-del').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      limpiarJugadorStats(btn.dataset.jugador, btn.dataset.campo);
+    });
+  });
 }
 RENDERERS.goleadores = renderGoleadores;
 
