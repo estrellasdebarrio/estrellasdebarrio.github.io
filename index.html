@@ -9,8 +9,9 @@
   Si Firestore no responde, la plataforma sigue funcionando pero guarda los
   cambios solo en el navegador de cada persona (sin compartir entre dispositivos).
 
-  ACCESO: la plataforma exige usuario y clave. Usuarios iniciales: admin (perfil
-  Administrador), mesa (Mesa de control) y general (solo consulta). Las claves se
+  ACCESO: la plataforma exige usuario y clave. Usuarios iniciales: admin
+  (Administrador), turno y coordinador (Mesa de control), acceso (solo
+  acreditación del partido) y vista (solo consulta). Las claves se
   guardan como hash SHA-256 con salt dentro del mismo estado compartido y se
   administran desde la pestaña "Usuarios y Accesos". Es un control operativo, no
   seguridad criptográfica: ver el detalle en el comentario de ui_usuarios.js.
@@ -229,6 +230,14 @@
   /* --- Bloqueos por perfil --- */
   body.rol-general #content input, body.rol-general #content select, body.rol-general #content textarea,
   body.rol-general #content button:not(#btnImprimirCircular){ pointer-events:none; opacity:.5; }
+  /* Consultar no es editar: los selectores que solo sirven para navegar y los
+     botones de impresión quedan disponibles también en modo de solo lectura. */
+  body.rol-general #planillaMatchSel, body.rol-general #jugadoresTeamSel,
+  body.rol-general #circularSel, body.rol-general #histClubSel,
+  body.rol-general .ir-planilla, body.rol-general .ir-plantel,
+  body.rol-general #btnVolverEquipos, body.rol-general #btnVolverProg,
+  body.rol-general #btnImprimirAcred, body.rol-general #btnActaDescargar,
+  body.rol-general #btnActaPdf{ pointer-events:auto !important; opacity:1 !important; }
   body.rol-mesa #panel-equipos input, body.rol-mesa #panel-equipos select,
   body.rol-mesa #panel-equipos textarea, body.rol-mesa #panel-equipos button,
   body.rol-mesa #panel-circular input, body.rol-mesa #panel-circular select,
@@ -236,6 +245,20 @@
   body.rol-mesa #panel-circular button:not(#btnImprimirCircular){ pointer-events:none; opacity:.5; }
   /* Los pagos los registra el administrador; la mesa solo consulta */
   body.rol-mesa #panel-historialclub input, body.rol-mesa #panel-historialclub select:not(#histClubSel){ pointer-events:none; opacity:.5; }
+  /* Perfil "Acceso": todo bloqueado salvo la acreditación del partido. */
+  body.rol-acreditacion #content input, body.rol-acreditacion #content select,
+  body.rol-acreditacion #content textarea, body.rol-acreditacion #content button{ pointer-events:none; opacity:.5; }
+  /* Lo que sí puede usar (con !important: la regla de bloqueo de arriba es más
+     específica al llevar el nombre del elemento). Navegar, imprimir y descargar
+     no modifican nada, así que también quedan disponibles. */
+  body.rol-acreditacion #acredZonas input, body.rol-acreditacion #acredZonas select,
+  body.rol-acreditacion #acredZonas textarea, body.rol-acreditacion #acredZonas button,
+  body.rol-acreditacion #planillaMatchSel, body.rol-acreditacion #btnImprimirAcred,
+  body.rol-acreditacion .ir-planilla, body.rol-acreditacion .ir-plantel,
+  body.rol-acreditacion #jugadoresTeamSel, body.rol-acreditacion #btnVolverEquipos,
+  body.rol-acreditacion #btnVolverProg, body.rol-acreditacion #btnDiagSync,
+  body.rol-acreditacion #btnActaDescargar,
+  body.rol-acreditacion #btnActaPdf{ pointer-events:auto !important; opacity:1 !important; }
 
   /* ---------- Menú móvil (oculto en escritorio) ---------- */
   #btnMenu{ display:none; }
@@ -324,15 +347,13 @@
   table.acred-tb .txt-input{ width:100%; min-width:0; }
   table.acred-tb .c{ text-align:center; }
   table.acred-tb .b{ font-weight:700; }
-  /* Versalita: los nombres se leen en mayúsculas pequeñas, como en la planilla
-     de papel, sin perder la mayúscula inicial. */
-  .vsalita{ font-variant-caps:small-caps; font-variant:small-caps; letter-spacing:.35px; font-weight:600; }
-  .acred-cargo{ display:block; font-variant:normal; font-variant-caps:normal; letter-spacing:0;
-    font-weight:400; font-size:10.5px; color:var(--muted); }
+  /* Los nombres van en la misma letra del resto de la plataforma (Segoe UI /
+     Arial), solo con un poco más de peso para que destaquen en la lista. */
+  .acred-nombre{ font-weight:600; }
+  .acred-cargo{ display:block; font-weight:400; font-size:10.5px; color:var(--muted); }
   #acredZonas .add-player-form{ margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;
     border-top:1px dashed var(--line); padding-top:12px; }
-  .acred-mini{ display:none; font-variant:normal; font-variant-caps:normal; letter-spacing:0;
-    font-weight:400; font-size:10.5px; color:var(--muted); }
+  .acred-mini{ display:none; font-weight:400; font-size:10.5px; color:var(--muted); }
   @media (max-width:1100px){ .acred-cols{ grid-template-columns:minmax(0,1fr); } }
   @media (max-width:760px){
     /* Desde el celular se acredita con el nombre a la vista: la fecha y el RUT
@@ -346,7 +367,7 @@
     table.acred-tb td{ white-space:normal; }
     /* La hora ya va en el botón de la firma: sobra la columna aparte. */
     table.acred-tb .col-hora{ display:none; }
-    table.acred-tb td.vsalita{ min-width:118px; }
+    table.acred-tb td.acred-nombre{ min-width:118px; }
     table.acred-tb .txt-input{ min-width:0 !important; }
     .acred-mini{ white-space:normal; line-height:1.3; }
     .acred-col{ padding:11px 10px 12px; }
@@ -429,6 +450,8 @@
       font-size:8px; text-transform:uppercase; letter-spacing:.2px; }
     #printArea .acta table.ac-tb td{ border:1px solid #000; padding:3px 5px; }
     #printArea .acta table.ac-tb .c{ text-align:center; }
+    #printArea .acta .ac-incid{ font-size:9px; border:1px solid #000; padding:6px 8px; line-height:1.45;
+      white-space:pre-wrap; min-height:38px; }
     #printArea .acta .ac-cierre{ font-size:8.5px; margin-top:10px; font-style:italic; }
     #printArea .acta .ac-firmas{ display:flex; gap:16px; margin-top:26px; }
     #printArea .acta .ac-fl{ flex:1; font-size:8px; text-align:center; }
@@ -547,6 +570,58 @@ function fmtMoney(n){
   var s = Math.abs(Math.round(n)).toString();
   var out = s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return (n < 0 ? '-$' : '$') + out;
+}
+
+/* ---------------------------------------------------------------------------
+   NOMBRE PROPIO
+
+   Las nóminas llegan escritas de cualquier manera: TODO EN MAYÚSCULAS desde el
+   Excel de los clubes, todo en minúsculas, o mezclado. Esta función las deja
+   con mayúscula inicial en cada palabra, sin tocar las tildes ni la ñ, que se
+   conservan tal como vengan (solo cambia el tipo de letra, nunca los signos).
+
+   Reglas del español: las partículas de los apellidos van en minúscula cuando
+   no abren el nombre ("Juan de la Fuente", pero "De la Fuente, Juan"), los
+   guiones y apóstrofos abren palabra nueva ("Jean-Pierre", "O'Higgins") y las
+   iniciales sueltas quedan en mayúscula ("Juan P. Soto").
+--------------------------------------------------------------------------- */
+var NOMBRE_PARTICULAS = ['de','del','la','las','los','le','y','e','da','das','do','dos',
+  'van','von','der','den','di','du','della','dello','degli'];
+
+function capitalizarPalabra(p){
+  if (!p) return p;
+  /* Cada tramo separado por guion o apóstrofo se capitaliza por su cuenta. */
+  return p.replace(/[^\s'’-]+/g, function(tramo){
+    return tramo.charAt(0).toUpperCase() + tramo.slice(1).toLowerCase();
+  });
+}
+
+function nombrePropio(texto){
+  if (texto == null) return '';
+  var limpio = String(texto).replace(/\s+/g, ' ').trim();
+  if (!limpio) return '';
+  var palabras = limpio.split(' ');
+  return palabras.map(function(p, i){
+    var base = p.toLowerCase();
+    /* Partícula en minúscula, salvo que abra el nombre o lo cierre. */
+    if (i > 0 && i < palabras.length - 1 && NOMBRE_PARTICULAS.indexOf(base) !== -1) return base;
+    return capitalizarPalabra(p);
+  }).join(' ');
+}
+
+/* Versión del formato de los nombres de la nómina. Al subir, los dispositivos
+   que tengan la nómina en mayúsculas la pasan a nombre propio una sola vez. */
+var NOMBRES_VERSION = 1;
+
+function migrarNombresJugadores(){
+  if (STATE.nombresVersion === NOMBRES_VERSION) return 0;
+  var cambiados = 0;
+  (STATE.jugadores || []).forEach(function(j){
+    var propio = nombrePropio(j.nombre);
+    if (propio && propio !== j.nombre){ j.nombre = propio; cambiados++; }
+  });
+  STATE.nombresVersion = NOMBRES_VERSION;
+  return cambiados;
 }
 
 function escapeHtml(s){
@@ -794,7 +869,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.22-1';
+var APP_VERSION = 'v2026.09.22-3';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2372,7 +2447,7 @@ function htmlAcredZonas(matchId){
   var equipo = getEquipo(STATE, teamId);
   var planilla = ensurePlanilla(matchId);
   var firmas = firmasDe(matchId);
-  var editable = puedeEditarAlgo() && (typeof puedeEditarActa !== 'function' || puedeEditarActa(matchId));
+  var editable = (typeof puedeAcreditarEn === 'function') ? puedeAcreditarEn(matchId) : puedeEditarAlgo();
 
   var integrantes = integrantesOrdenados(teamId);
   var pendientes = integrantes.filter(function(j){ return !firmas[j.id]; });
@@ -2402,7 +2477,7 @@ function htmlAcredZonas(matchId){
         '" data-jugador="' + j.id + '"' + (entry.asiste ? ' checked' : '') + (editable ? '' : ' disabled') + '></td>' +
       '<td><input type="number" class="num-input dorsal-input" data-match="' + matchId + '" data-lado="' + lado +
         '" data-jugador="' + j.id + '" value="' + (entry.dorsal || '') + '"' + (editable ? '' : ' disabled') + '></td>' +
-      '<td class="vsalita">' + escapeHtml(j.nombre) +
+      '<td class="acred-nombre">' + escapeHtml(j.nombre) +
         (j.cargo && j.cargo !== 'Jugador' ? '<span class="acred-cargo">' + escapeHtml(j.cargo) + '</span>' : '') +
         /* En pantallas angostas la fecha y el RUT se leen bajo el nombre, para
            no tener que desplazar la tabla mientras se acredita desde el celular. */
@@ -2438,7 +2513,7 @@ function htmlAcredZonas(matchId){
     var f = firmas[j.id] || {};
     return '<tr>' +
       '<td class="c b">' + (entry.dorsal || j.dorsal || '—') + '</td>' +
-      '<td class="vsalita">' + escapeHtml(j.nombre) +
+      '<td class="acred-nombre">' + escapeHtml(j.nombre) +
         (j.cargo && j.cargo !== 'Jugador' ? '<span class="acred-cargo">' + escapeHtml(j.cargo) + '</span>' : '') + '</td>' +
       '<td class="c muted col-hora" style="font-size:11.5px;">' + (f.ts || '').slice(11, 16) + '</td>' +
       celdaFirma(matchId, j.id, true) +
@@ -2563,7 +2638,7 @@ function initAcredEventos(matchId, cont){
   cont.querySelectorAll('.add-player-form').forEach(function(form){
     form.addEventListener('submit', function(e){
       e.preventDefault();
-      var nombre = form.querySelector('.ap-nombre').value.trim();
+      var nombre = nombrePropio(form.querySelector('.ap-nombre').value);
       var dorsal = Number(form.querySelector('.ap-dorsal').value) || 0;
       var cargo = form.querySelector('.ap-cargo').value;
       var rutNuevo = form.querySelector('.ap-rut').value.trim();
@@ -2745,7 +2820,7 @@ function renderJugadoresBody(){
     });
   }
   bindField('jg-dorsal','dorsal', function(v){ return Number(v)||0; });
-  bindField('jg-nombre','nombre');
+  bindField('jg-nombre','nombre', nombrePropio);
   bindField('jg-cargo','cargo');
   bindField('jg-rut','rut');
   bindField('jg-nacionalidad','nacionalidad');
@@ -2776,7 +2851,7 @@ function renderJugadoresBody(){
   var addCuerpo = document.getElementById('addCuerpoForm');
   addCuerpo.addEventListener('submit', function(e){
     e.preventDefault();
-    var nombre = addCuerpo.nombre.value.trim();
+    var nombre = nombrePropio(addCuerpo.nombre.value);
     if (!nombre){ toast('Indique el nombre.', true); return; }
     STATE.jugadores.push({
       id: uid('pl'), teamId: JUGADORES_SELECTED_TEAM, dorsal: 0, nombre: nombre,
@@ -2791,7 +2866,7 @@ function renderJugadoresBody(){
   var addForm = document.getElementById('addJugadorForm');
   addForm.addEventListener('submit', function(e){
     e.preventDefault();
-    var nombre = addForm.nombre.value.trim();
+    var nombre = nombrePropio(addForm.nombre.value);
     if (!nombre){ toast('Indique el nombre.', true); return; }
     var dorsal = Number(addForm.dorsal.value) || 0;
     var cargo = 'Jugador';
@@ -3726,6 +3801,7 @@ function datosActa(matchId){
 
   return {
     partido: p, equipos: t, acta: acta, marcador: m, filas: filas,
+    incidencias: (acta.incidencias || '').trim(),
     resumen: [resumen('local', t.localNombre), resumen('visita', t.visitaNombre)]
   };
 }
@@ -3864,6 +3940,20 @@ function descargarActaPdf(matchId){
     });
     y += h;
   });
+
+  /* --- Incidencias --- */
+  if (d.incidencias){
+    var parrafos = d.incidencias.split(/\n+/).filter(function(x){ return x.trim(); });
+    var lineasInc = [];
+    parrafos.forEach(function(p2){ lineasInc = lineasInc.concat(pdfCortar(p2.trim(), 9, false, ANCHO - 14)); });
+    var altoInc = 12 + lineasInc.length * 12;
+    if (y + altoInc + 30 > PIE){ doc.nuevaPagina(); encabezadoPagina(false); }
+    y += 16;
+    subtitulo('Incidencias');
+    doc.rect(M, y, ANCHO, altoInc, { gris: 0.3 });
+    lineasInc.forEach(function(ln, i){ doc.texto(M + 7, y + 16 + i * 12, ln, { size: 9 }); });
+    y += altoInc;
+  }
 
   /* --- Pie: estado del acta y firmas --- */
   if (y > PIE - 78){ doc.nuevaPagina(); encabezadoPagina(false); }
@@ -4098,6 +4188,11 @@ function imprimirActa(matchId){
         '<th class="c" style="width:88px;">Acción</th><th>Detalle</th>' +
       '</tr></thead><tbody>' + filas + '</tbody></table>' +
 
+      (acta.incidencias && acta.incidencias.trim()
+        ? '<div class="ac-sub">Incidencias</div>' +
+          '<div class="ac-incid">' + escapeHtml(acta.incidencias.trim()).replace(/\n/g, '<br>') + '</div>'
+        : '') +
+
       (acta.cerrado
         ? '<div class="ac-cierre">Acta cerrada por ' + escapeHtml(acta.cerradoPor || '—') + ' el ' +
           fmtDateEs((acta.cerradoEn || '').slice(0,10)) + ' a las ' + (acta.cerradoEn || '').slice(11,16) + '.</div>'
@@ -4111,6 +4206,61 @@ function imprimirActa(matchId){
       '</div>' +
     '</section>';
   window.print();
+}
+
+/* --- Incidencias del partido -----------------------------------------------
+   Espacio libre para dejar constancia de lo que no cabe en el registro de
+   acciones: reclamos, lesiones, demoras, conducta del público, condiciones de
+   la cancha. Viaja con el acta y se imprime y descarga junto a ella. */
+function incidenciasDe(matchId){
+  var acta = (STATE.actas || {})[matchId];
+  return (acta && acta.incidencias) ? acta.incidencias : '';
+}
+
+function tarjetaIncidencias(matchId){
+  var texto = incidenciasDe(matchId);
+  var editable = (typeof puedeEditarActa === 'function') ? puedeEditarActa(matchId) : puedeEditarAlgo();
+  return '<div class="card">' +
+    '<div class="card-head"><div><h3>Incidencias</h3>' +
+      '<p class="desc" style="margin:2px 0 0;">Todo lo que deba quedar por escrito y no sea gol, tarjeta ni ' +
+      'sustitución: reclamos, lesiones, demoras en el inicio, conducta del público, estado de la cancha o ' +
+      'cualquier hecho que el árbitro o la mesa quieran dejar consignado. Se guarda con el acta y sale en el PDF.</p>' +
+      '</div>' +
+      '<span class="muted" style="font-size:11.5px;" id="incidGuardado">' +
+        (texto ? texto.length + ' caracteres' : 'Sin incidencias') + '</span>' +
+    '</div>' +
+    '<textarea id="incidenciasTxt" class="txt-input" rows="6" maxlength="4000" ' +
+      'style="width:100%;min-height:130px;resize:vertical;line-height:1.5;"' +
+      (editable ? '' : ' readonly') + ' placeholder="' +
+      (editable ? 'Escriba aquí las incidencias del encuentro…' : 'Sin incidencias registradas.') + '">' +
+      escapeHtml(texto) + '</textarea>' +
+  '</div>';
+}
+
+function initIncidenciasEventos(matchId){
+  var ta = document.getElementById('incidenciasTxt');
+  if (!ta || ta.readOnly) return;
+  var aviso = document.getElementById('incidGuardado');
+  var temporizador = null;
+  ta.addEventListener('input', function(){
+    if (aviso) aviso.textContent = ta.value.length + ' caracteres';
+    clearTimeout(temporizador);
+    /* Se guarda sola mientras se escribe, sin esperar a salir del campo. */
+    temporizador = setTimeout(function(){
+      var acta = ensureActa(matchId);
+      if (acta.incidencias === ta.value) return;
+      acta.incidencias = ta.value;
+      scheduleSave();
+      if (aviso) aviso.textContent = 'Guardado · ' + ta.value.length + ' caracteres';
+    }, 700);
+  });
+  ta.addEventListener('blur', function(){
+    var acta = ensureActa(matchId);
+    if (acta.incidencias === ta.value) return;
+    acta.incidencias = ta.value;
+    logActivity('Incidencias del partido actualizadas', 'Partido N°' + (getPartido(STATE, matchId) || {}).numero);
+    scheduleSave();
+  });
 }
 
 /* Tarjeta de cierre al pie del registro del partido */
@@ -4287,9 +4437,11 @@ function renderActaBody(){
       '<div class="tbl-wrap" style="margin-top:14px;"><table class="tbl"><thead><tr><th>Equipo</th><th>Dorsal</th><th>Jugador</th><th>Acción</th><th>Min.</th><th>Sanción</th><th></th></tr></thead>' +
       '<tbody>' + accionesFilas() + '</tbody></table></div>' +
     '</div>' +
+    tarjetaIncidencias(p.id) +
     tarjetaCierre(p.id, t);
 
   initCronoEventos();
+  initIncidenciasEventos(p.id);
   initCierreEventos(p.id);
 
   var form = document.getElementById('accionForm');
@@ -4901,6 +5053,9 @@ function importarJSON(file){
         parsed.causales = parsed.causales && parsed.causales.length ? parsed.causales : CAUSALES;
         parsed.historial = parsed.historial || [];
         STATE = parsed;
+        /* La nómina del archivo puede venir en mayúsculas: se deja en nombre propio. */
+        STATE.nombresVersion = null;
+        migrarNombresJugadores();
         PLANILLA_SELECTED_MATCH = null; JUGADORES_SELECTED_TEAM = null; CIRCULAR_SELECTED = null;
         logActivity('Datos importados desde archivo JSON', file.name || '');
         renderAll();
@@ -5163,7 +5318,7 @@ async function leerNominaXlsx(file){
     if (!partes.length){ if (++vacias > 12) break; continue; }
     vacias = 0;
     jugadores.push({
-      nombre: partes.join(' ').replace(/\s+/g, ' '),
+      nombre: nombrePropio(partes.join(' ')),
       rut: (cols.rut && fila[cols.rut] && !esPlaceholder(fila[cols.rut])) ? String(fila[cols.rut]).trim() : '',
       nacionalidad: (cols.nacionalidad && fila[cols.nacionalidad] && !esPlaceholder(fila[cols.nacionalidad])) ? String(fila[cols.nacionalidad]).trim() : '',
       fechaNac: cols.fechaNac && fila[cols.fechaNac] ? fechaDesdeExcel(fila[cols.fechaNac]) : ''
@@ -5331,9 +5486,9 @@ function mostrarModalNomina(datos, nombreArchivo){
 
       if (form.cuerpo && form.cuerpo.checked){
         var staff = [
-          { nombre: datos.dt, cargo: 'Director técnico', contacto: datos.contactoDt },
-          { nombre: datos.delegado1, cargo: 'Persona delegada', contacto: datos.contacto1 },
-          { nombre: datos.delegado2, cargo: 'Persona delegada', contacto: datos.contacto2 }
+          { nombre: nombrePropio(datos.dt), cargo: 'Director técnico', contacto: datos.contactoDt },
+          { nombre: nombrePropio(datos.delegado1), cargo: 'Persona delegada', contacto: datos.contacto1 },
+          { nombre: nombrePropio(datos.delegado2), cargo: 'Persona delegada', contacto: datos.contacto2 }
         ].filter(function(x){ return x.nombre; });
         staff.forEach(function(x){
           var yaEsta = STATE.jugadores.filter(function(j){
@@ -5667,8 +5822,10 @@ function abrirFirmaJugador(matchId, jugadorId){
   var j = getJugador(STATE, jugadorId);
   var p = getPartido(STATE, matchId);
   if (!j || !p) return;
-  if (typeof puedeEditarActa === 'function' && !puedeEditarActa(matchId)){
-    toast('El partido está cerrado: no se pueden tomar más firmas.', true);
+  if (typeof puedeAcreditarEn === 'function' && !puedeAcreditarEn(matchId)){
+    toast(partidoCerrado(matchId)
+      ? 'El partido está cerrado: no se pueden tomar más firmas.'
+      : 'Su perfil no puede tomar firmas.', true);
     return;
   }
   var firmas = firmasDe(matchId);
@@ -5860,10 +6017,10 @@ function contenidoCeldaFirma(matchId, jugadorId, asiste){
     return '<span style="white-space:nowrap;">' +
       '<button class="btn btn-ghost btn-xs ver-firma" data-match="' + matchId + '" data-jugador="' + jugadorId + '" ' +
         'title="Firmada a las ' + (f.ts||'').slice(11,16) + ' ante ' + escapeHtml(f.autor||'') + '">✅ ' + (f.ts||'').slice(11,16) + '</button>' +
-      (puedeEditarAlgo() ? ' <button class="btn btn-ghost btn-xs del-firma" data-match="' + matchId + '" data-jugador="' + jugadorId + '" title="Anular firma">✕</button>' : '') +
+      (puedeAcreditar() ? ' <button class="btn btn-ghost btn-xs del-firma" data-match="' + matchId + '" data-jugador="' + jugadorId + '" title="Anular firma">✕</button>' : '') +
     '</span>';
   }
-  if (!puedeEditarAlgo()) return '<span class="muted" style="font-size:11px;">Sin firmar</span>';
+  if (!puedeAcreditar()) return '<span class="muted" style="font-size:11px;">Sin firmar</span>';
   return '<button class="btn btn-ghost btn-xs firmar-btn" data-match="' + matchId + '" data-jugador="' + jugadorId + '">✍️ Firmar</button>';
 }
 
@@ -6579,11 +6736,14 @@ function renderCausalesCard(){
    reglas de Firestore que exijan sesión válida.
 
    ROLES
-   - admin   : todo, incluida la gestión de usuarios y la importación de datos.
-   - mesa    : carga resultados de la jornada en curso, planillas, actas,
-               jugadores y sanciones. No edita Equipos, Circular ni calendario,
-               y no accede al Historial de Actividad.
-   - general : solo consulta. Su ingreso también queda registrado.
+   - admin        : todo, incluida la gestión de usuarios y la importación de datos.
+   - mesa         : carga resultados de la jornada en curso, planillas, actas,
+                    jugadores y sanciones. No edita Equipos, Circular ni calendario,
+                    y no accede al Historial de Actividad.
+   - acreditacion : solo la acreditación del partido dentro de la Planilla de
+                    Juego (asistencia, dorsal, RUT/fecha y firmas). Todo lo demás
+                    lo ve pero no lo puede tocar.
+   - general      : solo consulta. Su ingreso también queda registrado.
 
    El Historial de Actividad es exclusivo del administrador: registra quién hizo
    cada cambio, incluidos los ingresos y salidas de todos los perfiles.
@@ -6666,29 +6826,56 @@ function hashClave(salt, clave){ return SHA256(salt + ':' + clave); }
 
 /* --- Roles y usuarios iniciales --------------------------------------------- */
 var ROLES = {
-  admin:   { etiqueta: 'Administrador',            desc: 'Acceso total: edita todo y administra los usuarios.' },
-  mesa:    { etiqueta: 'Mesa de control',          desc: 'Carga resultados de la jornada en curso, planillas, actas, jugadores y sanciones.' },
-  general: { etiqueta: 'General (solo consulta)',  desc: 'Puede ver toda la información, sin editar nada.' }
+  admin:        { etiqueta: 'Administrador',            desc: 'Acceso total: edita todo y administra los usuarios.' },
+  mesa:         { etiqueta: 'Mesa de control',          desc: 'Carga resultados de la jornada en curso, planillas, actas, jugadores y sanciones.' },
+  acreditacion: { etiqueta: 'Acreditación',             desc: 'Solo acredita jugadores en la Planilla de Juego: asistencia, dorsal y firma. No toca el resto.' },
+  general:      { etiqueta: 'General (solo consulta)',  desc: 'Puede ver toda la información, sin editar nada.' }
 };
 
 /* Pestañas navegables que no se muestran en el menú */
 var TABS_SIN_BOTON = ['jugadores'];
 
 var TABS_POR_ROL = {
-  admin:   ['equipos','programacion','planilla','posiciones','goleadores','sanciones','circular','jugadores','historialclub','historial','usuarios'],
-  mesa:    ['equipos','programacion','planilla','posiciones','goleadores','sanciones','circular','jugadores','historialclub'],
-  general: ['equipos','programacion','planilla','posiciones','goleadores','sanciones','circular','jugadores']
+  admin:        ['equipos','programacion','planilla','posiciones','goleadores','sanciones','circular','jugadores','historialclub','historial','usuarios'],
+  mesa:         ['equipos','programacion','planilla','posiciones','goleadores','sanciones','circular','jugadores','historialclub'],
+  /* El perfil de acreditación entra directo a lo suyo: elige el partido y
+     acredita. No ve tablas, sanciones ni circular. */
+  acreditacion: ['programacion','planilla','equipos','jugadores'],
+  general:      ['equipos','programacion','planilla','posiciones','goleadores','sanciones','circular','jugadores']
 };
+
+/* Versión de la nómina de usuarios. Si sube, los dispositivos que ya tenían la
+   nómina antigua guardada la reemplazan por esta al abrir la plataforma. */
+var USUARIOS_VERSION = 2;
+var USUARIOS_BASE_IDS = ['u_admin','u_mesa','u_general','u_turno','u_coord','u_acceso','u_vista'];
 
 function crearUsuariosIniciales(){
   return [
-    { id: 'u_admin',   usuario: 'admin',   nombre: 'Administrador',           rol: 'admin',
-      salt: '98c453c55bf0', hash: 'f497b2e9fa0c8f67f2f908334e134c4267aaf570d2d3d7f137a2c52d3d546159', activo: true },
-    { id: 'u_mesa',    usuario: 'mesa',    nombre: 'Mesa de Control',         rol: 'mesa',
-      salt: '7b81c08a9b1a', hash: '9300d756878cb9b1632bc7fe6239efeeaf04b3ce574c0a901d7a63ba4fcfbb02', activo: true },
-    { id: 'u_general', usuario: 'general', nombre: 'General',                 rol: 'general',
-      salt: '60a729c7e346', hash: '31afa9448ed683ed6cdc3f8e606984e2c99c85462c2a6240a206f1da36468aa4', activo: true }
+    { id: 'u_admin', usuario: 'admin', nombre: 'Administrador', rol: 'admin',
+      salt: 'b30212ed1643', hash: 'b7f1ad328456fe1c7384afcc3972b60cb0b9b0f12fa85a16dbe0a96b03247f35', activo: true },
+    { id: 'u_turno', usuario: 'turno', nombre: 'Turno', rol: 'mesa',
+      salt: '6c59893cb233', hash: 'e78a091e0d9177b8b38d814ede4086d47470e5fcd148f0fc29407c75708a6b92', activo: true },
+    { id: 'u_coord', usuario: 'coordinador', nombre: 'Coordinador', rol: 'mesa',
+      salt: 'd9f672a80540', hash: 'd73f7c711e33c55a6f1ae49aaa3f30d89f09629303923fea4494321e3ee5824c', activo: true },
+    { id: 'u_acceso', usuario: 'acceso', nombre: 'Acceso', rol: 'acreditacion',
+      salt: '5414466083fb', hash: 'a3d994e1957bc7c07a4ce60e14d079c7e122b8120fad550634b0ac0e6634a140', activo: true },
+    { id: 'u_vista', usuario: 'vista', nombre: 'Vista', rol: 'general',
+      salt: 'b21aa836a046', hash: '1c2e7515819bb14326de1416270c881bb97d855c601a32300e1b0516a93c3365', activo: true }
   ];
+}
+
+/* Reemplaza la nómina antigua (admin / mesa / general) por la nueva, sin tocar
+   los usuarios que el administrador haya creado a mano. */
+function migrarUsuarios(){
+  if (STATE.usuariosVersion === USUARIOS_VERSION && STATE.usuarios && STATE.usuarios.length) return false;
+  var nuevos = crearUsuariosIniciales();
+  var nombresNuevos = nuevos.map(function(u){ return u.usuario; });
+  var propios = (STATE.usuarios || []).filter(function(u){
+    return USUARIOS_BASE_IDS.indexOf(u.id) === -1 && nombresNuevos.indexOf((u.usuario || '').toLowerCase()) === -1;
+  });
+  STATE.usuarios = nuevos.concat(propios);
+  STATE.usuariosVersion = USUARIOS_VERSION;
+  return true;
 }
 
 /* --- Sesión ---------------------------------------------------------------- */
@@ -6708,7 +6895,7 @@ function borrarSesionLocal(){
 }
 
 function usuariosState(){
-  if (!STATE.usuarios || !STATE.usuarios.length) STATE.usuarios = crearUsuariosIniciales();
+  if (!STATE.usuarios || !STATE.usuarios.length || STATE.usuariosVersion !== USUARIOS_VERSION) migrarUsuarios();
   return STATE.usuarios;
 }
 function buscarUsuario(nombreUsuario){
@@ -6719,8 +6906,17 @@ function buscarUsuario(nombreUsuario){
 function rolActual(){ return SESION ? SESION.rol : null; }
 function esAdmin(){ return rolActual() === 'admin'; }
 function esMesa(){ return rolActual() === 'mesa'; }
+function esAcreditador(){ return rolActual() === 'acreditacion'; }
 function soloConsulta(){ return rolActual() === 'general'; }
 function puedeEditarAlgo(){ return esAdmin() || esMesa(); }
+
+/* La acreditación del partido tiene su propio permiso: la abre el perfil
+   "Acceso" además del administrador y la mesa de control. */
+function puedeAcreditar(){ return esAdmin() || esMesa() || esAcreditador(); }
+function puedeAcreditarEn(matchId){
+  if (!puedeAcreditar()) return false;
+  return !partidoCerrado(matchId) || esAdmin();
+}
 
 /* Mesa de control: puede corregir resultados hasta que termina la jornada.
    La jornada se cierra a las 06:00 del día siguiente al último partido de esa
@@ -6743,7 +6939,7 @@ function puedeEditarResultado(p){
 
 function aplicarPermisosUI(){
   var rol = rolActual();
-  document.body.classList.remove('rol-admin','rol-mesa','rol-general');
+  document.body.classList.remove('rol-admin','rol-mesa','rol-acreditacion','rol-general');
   if (rol) document.body.classList.add('rol-' + rol);
 
   document.body.classList.toggle('partido-cerrado',
@@ -6851,7 +7047,7 @@ function cerrarSesion(){
   scheduleSave();
   SESION = null;
   borrarSesionLocal();
-  document.body.classList.remove('rol-admin','rol-mesa','rol-general');
+  document.body.classList.remove('rol-admin','rol-mesa','rol-acreditacion','rol-general');
   mostrarLogin('Sesión cerrada. Ingrese nuevamente para continuar.');
 }
 
@@ -6923,6 +7119,7 @@ function renderUsuarios(){
       '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Perfil</th><th>Alcance</th></tr></thead><tbody>' +
         '<tr><td><strong>Administrador</strong></td><td>Edita todo: equipos, calendario, resultados, planillas, actas, jugadores, sanciones y circular. Administra usuarios, importa y descarga datos.</td></tr>' +
         '<tr><td><strong>Mesa de control</strong></td><td>Carga y corrige resultados mientras la jornada está abierta (hasta las 06:00 del día siguiente al último partido de esa fecha), más planillas, actas, jugadores y sanciones. No edita equipos, calendario ni circular, consulta el Historial por Club sin registrar pagos, y no accede al Historial de Actividad.</td></tr>' +
+        '<tr><td><strong>Acreditación</strong></td><td>Entra a Programación y a la Planilla de Juego para acreditar: marca asistencia, asigna dorsales, corrige RUT y fecha de nacimiento, toma y anula firmas, e inscribe a quien no venía en la nómina. No registra goles ni tarjetas, no cierra el partido y no edita nada más de la plataforma.</td></tr>' +
         '<tr><td><strong>General</strong></td><td>Solo consulta. Ve las pestañas de competencia; no accede al Historial por Club, al Historial de Actividad ni a la gestión de usuarios.</td></tr>' +
       '</tbody></table></div>' +
       '<p class="desc" style="margin-top:10px;">Las claves se guardan cifradas (hash SHA-256 con salt), nunca en texto ' +
@@ -7081,6 +7278,16 @@ document.addEventListener('DOMContentLoaded', async function(){
   ONLINE_SYNC = !!ready;
   var loaded = ready ? await loadPersistedState() : null;
   if (loaded) STATE = loaded;
+
+  /* Nómina de usuarios al día antes de pedir la clave. */
+  var guardarTrasMigrar = migrarUsuarios();
+  /* Nombres de la nómina en nombre propio (llegan en mayúsculas del Excel). */
+  var nombresCorregidos = migrarNombresJugadores();
+  if (nombresCorregidos){
+    guardarTrasMigrar = true;
+    console.log('Nombres pasados a nombre propio: ' + nombresCorregidos);
+  }
+  if (guardarTrasMigrar) scheduleSave();
 
   renderAll();
   switchTab('equipos');
