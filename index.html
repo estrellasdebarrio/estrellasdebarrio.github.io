@@ -299,6 +299,59 @@
     .login-card{ padding:18px; }
   }
 
+  /* ---------- Acreditación por equipo (dos columnas) ---------- */
+  .acred-tabs{ display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 4px; }
+  .acred-tab{ display:flex; align-items:center; gap:9px; padding:9px 14px; border-radius:12px; cursor:pointer;
+    border:1.5px solid var(--line); background:var(--panel); color:var(--ink); font-size:13.5px; font-weight:600;
+    font-family:inherit; transition:border-color .15s, background .15s; }
+  .acred-tab:hover{ border-color:var(--green); }
+  .acred-tab.activa{ border-color:var(--green); background:var(--green-soft); }
+  .acred-tab .team-logo{ width:26px; height:26px; flex:0 0 auto; font-size:9px; }
+  .acred-tab-nb{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:190px; }
+  .acred-tab-ct{ font-size:11.5px; font-weight:700; color:var(--muted); background:var(--bg);
+    border-radius:20px; padding:2px 9px; }
+  .acred-tab.activa .acred-tab-ct{ color:var(--green-dark); }
+
+  .acred-cols{ display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:16px; margin-top:12px; }
+  .acred-col{ border:1px solid var(--line); border-radius:14px; padding:13px 14px 14px; background:var(--panel-2);
+    min-width:0; }
+  .acred-col-ok{ background:var(--green-soft); border-color:var(--green); }
+  .acred-col-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .acred-col-head h4{ margin:0; font-size:14px; }
+  .acred-col .desc{ margin:4px 0 10px; }
+  table.acred-tb td, table.acred-tb th{ padding:5px 7px; }
+  table.acred-tb .num-input{ width:56px; }
+  table.acred-tb .txt-input{ width:100%; min-width:0; }
+  table.acred-tb .c{ text-align:center; }
+  table.acred-tb .b{ font-weight:700; }
+  /* Versalita: los nombres se leen en mayúsculas pequeñas, como en la planilla
+     de papel, sin perder la mayúscula inicial. */
+  .vsalita{ font-variant-caps:small-caps; font-variant:small-caps; letter-spacing:.35px; font-weight:600; }
+  .acred-cargo{ display:block; font-variant:normal; font-variant-caps:normal; letter-spacing:0;
+    font-weight:400; font-size:10.5px; color:var(--muted); }
+  #acredZonas .add-player-form{ margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;
+    border-top:1px dashed var(--line); padding-top:12px; }
+  .acred-mini{ display:none; font-variant:normal; font-variant-caps:normal; letter-spacing:0;
+    font-weight:400; font-size:10.5px; color:var(--muted); }
+  @media (max-width:1100px){ .acred-cols{ grid-template-columns:minmax(0,1fr); } }
+  @media (max-width:760px){
+    /* Desde el celular se acredita con el nombre a la vista: la fecha y el RUT
+       pasan bajo el nombre y se corrigen desde el computador. */
+    table.acred-tb .col-fnac, table.acred-tb .col-rut{ display:none; }
+    .acred-mini{ display:block; }
+    .acred-tab-nb{ max-width:120px; }
+    table.acred-tb td, table.acred-tb th{ padding:4px 5px; }
+    table.acred-tb .num-input{ width:44px; }
+    table.acred-tb .col-firma{ width:78px; }
+    table.acred-tb td{ white-space:normal; }
+    /* La hora ya va en el botón de la firma: sobra la columna aparte. */
+    table.acred-tb .col-hora{ display:none; }
+    table.acred-tb td.vsalita{ min-width:118px; }
+    table.acred-tb .txt-input{ min-width:0 !important; }
+    .acred-mini{ white-space:normal; line-height:1.3; }
+    .acred-col{ padding:11px 10px 12px; }
+  }
+
   /* ---------- Toast ---------- */
   #toastWrap{ position:fixed; bottom:20px; right:20px; z-index:200; display:flex; flex-direction:column; gap:8px; }
   .toast{ background:#182234; color:#fff; padding:10px 16px; border-radius:10px; font-size:12.8px; box-shadow:0 8px 20px rgba(0,0,0,.3);
@@ -741,7 +794,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.21-6';
+var APP_VERSION = 'v2026.09.22-1';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2186,45 +2239,6 @@ function checkDobleInscripcion(nombre, teamIdActual){
   });
 }
 
-function renderPlanillaLado(matchId, teamId, lado){
-  var planilla = ensurePlanilla(matchId);
-  var jugadores = STATE.jugadores.filter(function(j){ return j.teamId === teamId; });
-  var equipo = getEquipo(STATE, teamId);
-  var rows = jugadores.map(function(j){
-    var entry = planilla[lado][j.id] || { asiste:false, dorsal:j.dorsal };
-    return '<tr>' +
-      '<td><input type="checkbox" class="asiste-chk" data-match="'+matchId+'" data-lado="'+lado+'" data-jugador="'+j.id+'" '+(entry.asiste?'checked':'')+'></td>' +
-      '<td><input type="number" class="num-input dorsal-input" data-match="'+matchId+'" data-lado="'+lado+'" data-jugador="'+j.id+'" value="'+entry.dorsal+'"></td>' +
-      '<td style="min-width:190px;">' + escapeHtml(j.nombre) + '</td>' +
-      /* Fecha de nacimiento y RUT a la vista para cotejar con la cédula al
-         acreditar. Son datos del plantel: si se corrigen aquí, quedan
-         corregidos también en el Plantel del Club. */
-      '<td><input class="txt-input pl-fnac" type="date" data-jugador="'+j.id+'" value="'+escapeHtml(j.fechaNac||'')+'"></td>' +
-      '<td><input class="txt-input pl-rut" data-jugador="'+j.id+'" value="'+escapeHtml(j.rut||'')+'" placeholder="12.345.678-9" style="width:130px;"></td>' +
-      '<td class="muted" style="font-size:11.5px;">' + escapeHtml(j.cargo) + '</td>' +
-      celdaFirma(matchId, j.id, entry.asiste) +
-    '</tr>';
-  }).join('') || '<tr><td colspan="7" class="empty-hint">Este equipo aún no tiene jugadores registrados.</td></tr>';
-  var acred = resumenAcreditacion(matchId, teamId, lado);
-
-  return '<div class="card">' +
-    '<div class="card-head"><h3>' + teamLogoHtml(equipo) + ' ' + escapeHtml(equipo ? equipo.nombre : '—') + '</h3>' +
-    '<span class="muted" style="font-size:12px;">' + jugadores.filter(function(j){return (planilla[lado][j.id]||{}).asiste;}).length + ' asisten · ' +
-      '<b class="acred-contador" data-team="' + teamId + '" data-lado="' + lado + '">' +
-      acred.firmados + '/' + acred.asisten + ' acreditados</b></span></div>' +
-    '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Asiste</th><th>Dorsal</th><th>Nombre</th><th>F. Nacimiento</th><th>RUT</th><th>Cargo</th><th>Acreditación</th></tr></thead>' +
-    '<tbody>' + rows + '</tbody></table></div>' +
-    '<form class="add-player-form" data-match="'+matchId+'" data-lado="'+lado+'" data-team="'+teamId+'" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
-      '<div class="field"><label>Nombre nuevo jugador</label><input class="txt-input ap-nombre" placeholder="Nombre completo"></div>' +
-      '<div class="field"><label>Dorsal</label><input class="txt-input ap-dorsal" type="number" style="width:80px;"></div>' +
-      '<div class="field"><label>F. Nacimiento</label><input class="txt-input ap-fnac" type="date"></div>' +
-      '<div class="field"><label>RUT</label><input class="txt-input ap-rut" placeholder="12.345.678-9" style="width:130px;"></div>' +
-      '<div class="field"><label>Cargo</label><select class="ap-cargo"><option>Jugador</option><option>Cuerpo técnico</option><option>Persona delegada</option></select></div>' +
-      '<button type="submit" class="btn btn-primary btn-xs">➕ Inscribir</button>' +
-    '</form>' +
-  '</div>';
-}
-
 function renderPlanilla(){
   var panel = document.getElementById('panel-planilla');
   capturarFormAccion();   // antes de rehacer el panel completo
@@ -2299,62 +2313,254 @@ function renderPlanillaBody(){
         (puedeEditarAlgo() ? '<button class="btn btn-ghost btn-xs" id="btnDiagSync">🔧 Probar sincronización</button>' : '') +
         '<button class="btn btn-ghost btn-xs" id="btnImprimirAcred">🖨️ Imprimir planilla</button>' +
       '</div>' +
-    '</div></div>' +
-    '<div class="grid-2">' +
-    renderPlanillaLado(p.id, t.localId, 'local') +
-    renderPlanillaLado(p.id, t.visitaId, 'visita') +
-  '</div>';
+    '</div>' +
+    '<div id="acredZonas"></div></div>';
 
-  initFirmasEventos(body);
+  pintarAcredZonas(p.id);
   var btnAcred = document.getElementById('btnImprimirAcred');
   if (btnAcred) btnAcred.addEventListener('click', function(){ imprimirAcreditacion(p.id); });
   var btnDiag = document.getElementById('btnDiagSync');
   if (btnDiag) btnDiag.addEventListener('click', diagnosticarSyncFirmas);
   actualizarEstadoSync();
 
-  body.querySelectorAll('.asiste-chk').forEach(function(chk){
+  /* El registro del partido (goles, faltas y tarjetas) va a continuación, en la
+     misma hoja: ya no existe una pestaña de Acta aparte. */
+  renderActaBody();
+}
+
+
+/* ---- ui_acreditacion.js ---- */
+/* ============================================================================
+   ACREDITACIÓN POR EQUIPO — dos columnas
+
+   En pantalla se trabaja un solo equipo a la vez. A la izquierda quedan los
+   que faltan por acreditar (en orden alfabético); apenas alguien firma, pasa
+   a la columna de la derecha, ordenada por dorsal. Así la lista de la
+   izquierda se va vaciando y siempre muestra lo que falta.
+   ========================================================================== */
+
+/* Equipo elegido para acreditar, por partido. */
+var ACRED_LADO_SEL = {};
+
+function acredLado(matchId){
+  return ACRED_LADO_SEL[matchId] === 'visita' ? 'visita' : 'local';
+}
+
+function acredTeamId(matchId){
+  var p = getPartido(STATE, matchId);
+  if (!p) return null;
+  var t = matchRowTeams(p);
+  return acredLado(matchId) === 'visita' ? t.visitaId : t.localId;
+}
+
+/* Integrantes del club ordenados alfabéticamente por nombre (es-CL, para que
+   las tildes y la ñ queden donde corresponde). */
+function integrantesOrdenados(teamId){
+  return STATE.jugadores.filter(function(j){ return j.teamId === teamId; })
+    .slice().sort(function(a, b){
+      return String(a.nombre).localeCompare(String(b.nombre), 'es', { sensitivity: 'base' });
+    });
+}
+
+/* Bloque completo de las dos columnas (sin la tarjeta que lo envuelve). */
+function htmlAcredZonas(matchId){
+  var p = getPartido(STATE, matchId);
+  if (!p) return '';
+  var t = matchRowTeams(p);
+  var lado = acredLado(matchId);
+  var teamId = acredTeamId(matchId);
+  var equipo = getEquipo(STATE, teamId);
+  var planilla = ensurePlanilla(matchId);
+  var firmas = firmasDe(matchId);
+  var editable = puedeEditarAlgo() && (typeof puedeEditarActa !== 'function' || puedeEditarActa(matchId));
+
+  var integrantes = integrantesOrdenados(teamId);
+  var pendientes = integrantes.filter(function(j){ return !firmas[j.id]; });
+  var acreditados = integrantes.filter(function(j){ return !!firmas[j.id]; })
+    .sort(function(a, b){
+      var da = ((planilla[lado] || {})[a.id] || {}).dorsal || a.dorsal || 999;
+      var db = ((planilla[lado] || {})[b.id] || {}).dorsal || b.dorsal || 999;
+      return da - db;
+    });
+
+  /* --- Selector de equipo --- */
+  var selector = '<div class="acred-tabs" role="tablist">' +
+    [['local', t.localId, t.localNombre], ['visita', t.visitaId, t.visitaNombre]].map(function(e){
+      var r = resumenAcreditacion(matchId, e[1], e[0]);
+      var eq = getEquipo(STATE, e[1]);
+      return '<button class="acred-tab' + (lado === e[0] ? ' activa' : '') + '" data-lado="' + e[0] + '">' +
+        teamLogoHtml(eq) + '<span class="acred-tab-nb">' + escapeHtml(e[2]) + '</span>' +
+        '<span class="acred-tab-ct">' + r.firmados + '/' + r.asisten + '</span>' +
+      '</button>';
+    }).join('') + '</div>';
+
+  /* --- Columna izquierda: por acreditar --- */
+  var filasPend = pendientes.map(function(j){
+    var entry = (planilla[lado] || {})[j.id] || { asiste: false, dorsal: j.dorsal };
+    return '<tr data-jugador="' + j.id + '">' +
+      '<td class="c"><input type="checkbox" class="asiste-chk" data-match="' + matchId + '" data-lado="' + lado +
+        '" data-jugador="' + j.id + '"' + (entry.asiste ? ' checked' : '') + (editable ? '' : ' disabled') + '></td>' +
+      '<td><input type="number" class="num-input dorsal-input" data-match="' + matchId + '" data-lado="' + lado +
+        '" data-jugador="' + j.id + '" value="' + (entry.dorsal || '') + '"' + (editable ? '' : ' disabled') + '></td>' +
+      '<td class="vsalita">' + escapeHtml(j.nombre) +
+        (j.cargo && j.cargo !== 'Jugador' ? '<span class="acred-cargo">' + escapeHtml(j.cargo) + '</span>' : '') +
+        /* En pantallas angostas la fecha y el RUT se leen bajo el nombre, para
+           no tener que desplazar la tabla mientras se acredita desde el celular. */
+        '<span class="acred-mini">' + (j.fechaNac ? fmtDateEs(j.fechaNac) : 'Sin fecha') + ' · ' +
+          escapeHtml(j.rut || 'Sin RUT') + '</span>' + '</td>' +
+      '<td class="col-fnac"><input class="txt-input pl-fnac" type="date" data-jugador="' + j.id + '" value="' +
+        escapeHtml(j.fechaNac || '') + '"' + (editable ? '' : ' disabled') + '></td>' +
+      '<td class="col-rut"><input class="txt-input pl-rut" data-jugador="' + j.id + '" value="' + escapeHtml(j.rut || '') +
+        '" placeholder="12.345.678-9"' + (editable ? '' : ' disabled') + '></td>' +
+      celdaFirma(matchId, j.id, entry.asiste) +
+    '</tr>';
+  }).join('');
+
+  var vacioPend = integrantes.length
+    ? '<tr><td colspan="6" class="empty-hint">✅ No queda nadie por acreditar en este club.</td></tr>'
+    : '<tr><td colspan="6" class="empty-hint">Este club aún no tiene nómina cargada.</td></tr>';
+
+  var izquierda = '<div class="acred-col">' +
+    '<div class="acred-col-head"><h4>Por acreditar</h4>' +
+      '<span class="pill ' + (pendientes.length ? 'pill-gold' : 'pill-green') + '">' + pendientes.length + '</span></div>' +
+    '<p class="desc">Marque <b>Asiste</b>, escriba el dorsal de la camiseta y tome la firma. Coteje la fecha de ' +
+      'nacimiento y el RUT con la cédula de identidad.</p>' +
+    '<div class="tbl-wrap"><table class="tbl acred-tb"><thead><tr>' +
+      '<th style="width:52px;">Asiste</th><th style="width:70px;">Dorsal</th><th>Nombre</th>' +
+      '<th class="col-fnac" style="width:132px;">F. Nacimiento</th>' +
+      '<th class="col-rut" style="width:124px;">RUT</th><th class="col-firma" style="width:96px;">Firma</th>' +
+    '</tr></thead><tbody>' + (filasPend || vacioPend) + '</tbody></table></div>' +
+  '</div>';
+
+  /* --- Columna derecha: ya acreditados --- */
+  var filasAcr = acreditados.map(function(j){
+    var entry = (planilla[lado] || {})[j.id] || { asiste: true, dorsal: j.dorsal };
+    var f = firmas[j.id] || {};
+    return '<tr>' +
+      '<td class="c b">' + (entry.dorsal || j.dorsal || '—') + '</td>' +
+      '<td class="vsalita">' + escapeHtml(j.nombre) +
+        (j.cargo && j.cargo !== 'Jugador' ? '<span class="acred-cargo">' + escapeHtml(j.cargo) + '</span>' : '') + '</td>' +
+      '<td class="c muted col-hora" style="font-size:11.5px;">' + (f.ts || '').slice(11, 16) + '</td>' +
+      celdaFirma(matchId, j.id, true) +
+    '</tr>';
+  }).join('');
+
+  var derecha = '<div class="acred-col acred-col-ok">' +
+    '<div class="acred-col-head"><h4>Acreditados</h4>' +
+      '<span class="pill pill-green">' + acreditados.length + '</span></div>' +
+    '<p class="desc">Quienes ya firmaron, ordenados por dorsal. Esta es la nómina habilitada para jugar.</p>' +
+    '<div class="tbl-wrap"><table class="tbl acred-tb"><thead><tr>' +
+      '<th style="width:56px;">Dorsal</th><th>Nombre</th><th class="col-hora" style="width:60px;">Hora</th>' +
+      '<th class="col-firma" style="width:96px;">Firma</th>' +
+    '</tr></thead><tbody>' + (filasAcr ||
+      '<tr><td colspan="4" class="empty-hint">Todavía no hay firmas en este club.</td></tr>') + '</tbody></table></div>' +
+  '</div>';
+
+  /* --- Alta de un integrante que no venía en la nómina --- */
+  var alta = editable ? '<form class="add-player-form" data-match="' + matchId + '" data-lado="' + lado +
+      '" data-team="' + teamId + '">' +
+      '<div class="field"><label>Nombre</label><input class="txt-input ap-nombre" placeholder="Nombre completo"></div>' +
+      '<div class="field"><label>Dorsal</label><input class="txt-input ap-dorsal" type="number" style="width:80px;"></div>' +
+      '<div class="field"><label>F. Nacimiento</label><input class="txt-input ap-fnac" type="date"></div>' +
+      '<div class="field"><label>RUT</label><input class="txt-input ap-rut" placeholder="12.345.678-9" style="width:130px;"></div>' +
+      '<div class="field"><label>Cargo</label><select class="ap-cargo"><option>Jugador</option>' +
+        '<option>Cuerpo técnico</option><option>Persona delegada</option></select></div>' +
+      '<button type="submit" class="btn btn-primary btn-xs">➕ Inscribir en ' + escapeHtml(equipo ? equipo.nombre : '—') + '</button>' +
+    '</form>' : '';
+
+  return selector + '<div class="acred-cols">' + izquierda + derecha + '</div>' + alta;
+}
+
+/* Redibuja solo el bloque de las dos columnas, conservando lo que la mesa
+   tenga escrito y el foco donde estaba. */
+function pintarAcredZonas(matchId){
+  var cont = document.getElementById('acredZonas');
+  if (!cont) return;
+  var act = document.activeElement;
+  var foco = null;
+  if (act && cont.contains(act) && act.dataset && act.dataset.jugador){
+    foco = { jugador: act.dataset.jugador, clase: act.className.split(' ')[0],
+      inicio: act.selectionStart, fin: act.selectionEnd };
+  }
+  cont.innerHTML = htmlAcredZonas(matchId);
+  initAcredEventos(matchId, cont);
+  if (foco){
+    var destino = cont.querySelector('.' + foco.clase + '[data-jugador="' + foco.jugador + '"]');
+    if (destino){
+      destino.focus();
+      try { destino.setSelectionRange(foco.inicio, foco.fin); } catch (e) {}
+    }
+  }
+  actualizarPillAcred(matchId);
+}
+
+function actualizarPillAcred(matchId){
+  var pill = document.getElementById('acredPill');
+  if (!pill) return;
+  var faltan = jugadoresPorAcreditar(matchId);
+  pill.textContent = faltan ? faltan + ' por acreditar' : 'Todos acreditados';
+  pill.classList.toggle('pill-gold', !!faltan);
+  pill.classList.toggle('pill-green', !faltan);
+}
+
+function initAcredEventos(matchId, cont){
+  var lado = acredLado(matchId);
+
+  cont.querySelectorAll('.acred-tab').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      ACRED_LADO_SEL[matchId] = btn.dataset.lado;
+      pintarAcredZonas(matchId);
+    });
+  });
+
+  initFirmasEventos(cont);
+
+  cont.querySelectorAll('.asiste-chk').forEach(function(chk){
     chk.addEventListener('change', function(){
-      var planilla = ensurePlanilla(chk.dataset.match);
-      var lado = planilla[chk.dataset.lado];
+      var planilla = ensurePlanilla(matchId);
+      var reg = planilla[chk.dataset.lado];
       var jid = chk.dataset.jugador;
-      if (!lado[jid]){
+      if (!reg[jid]){
         var j = getJugador(STATE, jid);
-        lado[jid] = { asiste:false, dorsal: j ? j.dorsal : 0 };
+        reg[jid] = { asiste: false, dorsal: j ? j.dorsal : 0 };
       }
-      lado[jid].asiste = chk.checked;
-      renderAll();
+      reg[jid].asiste = chk.checked;
+      scheduleSave();
+      pintarAcredZonas(matchId);
+      refrescarResumenPlanilla(matchId);
     });
   });
-  body.querySelectorAll('.dorsal-input').forEach(function(inp){
+
+  cont.querySelectorAll('.dorsal-input').forEach(function(inp){
     inp.addEventListener('change', function(){
-      var planilla = ensurePlanilla(inp.dataset.match);
-      var lado = planilla[inp.dataset.lado];
+      var planilla = ensurePlanilla(matchId);
+      var reg = planilla[inp.dataset.lado];
       var jid = inp.dataset.jugador;
-      if (!lado[jid]) lado[jid] = { asiste:false, dorsal:0 };
-      lado[jid].dorsal = Number(inp.value) || 0;
-      renderAll();
+      if (!reg[jid]) reg[jid] = { asiste: false, dorsal: 0 };
+      reg[jid].dorsal = Number(inp.value) || 0;
+      scheduleSave();
     });
   });
-  /* RUT y fecha de nacimiento corregidos en la planilla quedan guardados en el
-     plantel del club, que es donde vive el dato del jugador. */
-  function bindDatoJugador(cls, prop, etiqueta){
-    body.querySelectorAll('.' + cls).forEach(function(inp){
+
+  /* RUT y fecha de nacimiento corregidos acá quedan guardados en el plantel
+     del club, que es donde vive el dato del jugador. */
+  function bindDato(cls, prop, etiqueta){
+    cont.querySelectorAll('.' + cls).forEach(function(inp){
       inp.addEventListener('change', function(){
         var j = getJugador(STATE, inp.dataset.jugador);
         if (!j) return;
-        var antes = j[prop] || '';
-        var ahora = inp.value.trim();
+        var antes = j[prop] || '', ahora = inp.value.trim();
         if (antes === ahora) return;
         j[prop] = ahora;
         logActivity(etiqueta, j.nombre + ': ' + (antes || '—') + ' → ' + (ahora || '—'));
-        renderAll();
+        scheduleSave();
       });
     });
   }
-  bindDatoJugador('pl-rut', 'rut', 'RUT actualizado desde la planilla');
-  bindDatoJugador('pl-fnac', 'fechaNac', 'Fecha de nacimiento actualizada desde la planilla');
+  bindDato('pl-rut', 'rut', 'RUT actualizado desde la planilla');
+  bindDato('pl-fnac', 'fechaNac', 'Fecha de nacimiento actualizada desde la planilla');
 
-  body.querySelectorAll('.add-player-form').forEach(function(form){
+  cont.querySelectorAll('.add-player-form').forEach(function(form){
     form.addEventListener('submit', function(e){
       e.preventDefault();
       var nombre = form.querySelector('.ap-nombre').value.trim();
@@ -2367,36 +2573,39 @@ function renderPlanillaBody(){
 
       function crear(){
         var nuevo = { id: uid('pl'), teamId: teamId, dorsal: dorsal, nombre: nombre, cargo: cargo,
-          rut: rutNuevo, nacionalidad:'', fechaNac: fnacNueva, estado:'Activo' };
+          rut: rutNuevo, nacionalidad: '', fechaNac: fnacNueva, estado: 'Activo' };
         STATE.jugadores.push(nuevo);
-        var planilla = ensurePlanilla(form.dataset.match);
-        planilla[form.dataset.lado][nuevo.id] = { asiste:true, dorsal: dorsal };
-        var equipoNuevo = getEquipo(STATE, teamId);
-        logActivity('Jugador inscrito en planilla', nombre + ' #' + dorsal + ' (' + (equipoNuevo?equipoNuevo.nombre:'—') + ')');
-        renderAll();
+        ensurePlanilla(matchId)[lado][nuevo.id] = { asiste: true, dorsal: dorsal };
+        var eq = getEquipo(STATE, teamId);
+        logActivity('Jugador inscrito en planilla', nombre + ' #' + dorsal + ' (' + (eq ? eq.nombre : '—') + ')');
+        scheduleSave();
+        pintarAcredZonas(matchId);
+        refrescarResumenPlanilla(matchId);
         toast('Jugador inscrito.');
       }
 
-      var dupPl = checkDobleInscripcion(nombre, teamId);
-      if (dupPl){
-        var otroEquipo = getEquipo(STATE, dupPl.teamId);
+      var dup = checkDobleInscripcion(nombre, teamId);
+      if (dup){
+        var otro = getEquipo(STATE, dup.teamId);
         confirmModal({
           title: '⚠️ Jugador ya inscrito en otro equipo',
-          html: '<p><b>' + escapeHtml(nombre) + '</b> ya figura inscrito en <b>' + escapeHtml(otroEquipo ? otroEquipo.nombre : 'otro equipo') +
-                '</b> (dorsal #' + dupPl.dorsal + '). Según las bases, en caso de inscripción múltiple el jugador queda ' +
-                'inscrito en el club por el que juegue primero. ¿Autoriza de todas formas la doble inscripción?</p>',
-          okText: 'Autorizar doble inscripción', okClass: 'btn-danger', cancelText: 'Cancelar',
-          onOk: crear
+          html: '<p><b>' + escapeHtml(nombre) + '</b> ya figura inscrito en <b>' +
+            escapeHtml(otro ? otro.nombre : 'otro equipo') + '</b> (dorsal #' + dup.dorsal + '). Según las bases, ' +
+            'en caso de inscripción múltiple el jugador queda inscrito en el club por el que juegue primero. ' +
+            '¿Autoriza de todas formas la doble inscripción?</p>',
+          okText: 'Autorizar doble inscripción', okClass: 'btn-danger', cancelText: 'Cancelar', onOk: crear
         });
       } else {
         crear();
       }
     });
   });
+}
 
-  /* El registro del partido (goles, faltas y tarjetas) va a continuación, en la
-     misma hoja: ya no existe una pestaña de Acta aparte. */
-  renderActaBody();
+/* Los menús del registro de acciones dependen de quién asiste, así que se
+   refrescan cuando cambia la asistencia. */
+function refrescarResumenPlanilla(matchId){
+  if (typeof renderActaBody === 'function' && PLANILLA_SELECTED_MATCH === matchId) renderActaBody();
 }
 
 
@@ -3220,6 +3429,468 @@ function panelCambios(matchId, t){
   return '<div class="camb-panel">' + bloque('local', t.localNombre) + bloque('visita', t.visitaNombre) + '</div>';
 }
 
+
+/* ---- pdf_min.js ---- */
+/* ============================================================================
+   GENERADOR DE PDF PROPIO (sin librerías externas)
+
+   La plataforma es un archivo único y no carga librerías de terceros, así que
+   el PDF se arma a mano: Helvetica y Helvetica-Bold con codificación WinAnsi
+   (soporta tildes y la ñ), texto, líneas y rectángulos. Con eso alcanza de
+   sobra para el acta del partido, que es texto y tablas.
+
+   Sirve para DESCARGAR el archivo directamente, sin pasar por el diálogo de
+   impresión del navegador.
+   ========================================================================== */
+
+/* Anchos de los caracteres 32..126 en milésimas de punto (tabla estándar de
+   Helvetica). Los caracteres acentuados usan el ancho de su letra base. */
+var PDF_W_REG = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,
+  556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,
+  667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,
+  278,278,278,469,556,333,
+  556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,
+  334,260,334,584];
+var PDF_W_BOLD = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,
+  556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,
+  722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,
+  333,278,333,584,556,333,
+  556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,
+  389,280,389,584];
+
+/* Caracteres fuera del ASCII que interesan en español, con la letra base cuyo
+   ancho comparten en Helvetica. */
+var PDF_BASE_ACENTO = {
+  192:'A',193:'A',194:'A',195:'A',196:'A',197:'A',199:'C',200:'E',201:'E',202:'E',203:'E',
+  204:'I',205:'I',206:'I',207:'I',209:'N',210:'O',211:'O',212:'O',213:'O',214:'O',216:'O',
+  217:'U',218:'U',219:'U',220:'U',221:'Y',
+  224:'a',225:'a',226:'a',227:'a',228:'a',229:'a',231:'c',232:'e',233:'e',234:'e',235:'e',
+  236:'i',237:'i',238:'i',239:'i',241:'n',242:'o',243:'o',244:'o',245:'o',246:'o',248:'o',
+  249:'u',250:'u',251:'u',252:'u',253:'y',255:'y',
+  176:'o',183:'.',171:'<',187:'>',191:'?',161:'!'
+};
+
+/* Pasa una cadena JS a bytes WinAnsi. Lo que no se puede representar se
+   reemplaza por un signo de interrogación, nunca rompe el archivo. */
+function pdfWinAnsi(str){
+  var out = '';
+  for (var i = 0; i < str.length; i++){
+    var c = str.charCodeAt(i);
+    if (c === 0x2014) c = 0x97;        /* — raya */
+    else if (c === 0x2013) c = 0x96;   /* – semirraya */
+    else if (c === 0x2018) c = 0x91;
+    else if (c === 0x2019) c = 0x92;
+    else if (c === 0x201C) c = 0x93;
+    else if (c === 0x201D) c = 0x94;
+    else if (c === 0x2026) c = 0x85;   /* … */
+    else if (c === 0x20AC) c = 0x80;   /* € */
+    else if (c > 255) c = 63;          /* ? */
+    out += String.fromCharCode(c);
+  }
+  return out;
+}
+
+function pdfAnchoChar(code, bold){
+  var tabla = bold ? PDF_W_BOLD : PDF_W_REG;
+  if (code >= 32 && code <= 126) return tabla[code - 32];
+  var base = PDF_BASE_ACENTO[code];
+  if (base) return tabla[base.charCodeAt(0) - 32];
+  if (code === 0x97) return 1000;
+  if (code === 0x96) return 556;
+  if (code === 0x92 || code === 0x91) return bold ? 238 : 191;
+  if (code === 0x93 || code === 0x94) return bold ? 500 : 333;
+  return 556;
+}
+
+/* Ancho de un texto en puntos, para centrar y alinear a la derecha. */
+function pdfAncho(texto, size, bold){
+  var s = pdfWinAnsi(String(texto));
+  var total = 0;
+  for (var i = 0; i < s.length; i++) total += pdfAnchoChar(s.charCodeAt(i), bold);
+  return total * size / 1000;
+}
+
+/* Corta un texto en las líneas que caben en un ancho dado. */
+function pdfCortar(texto, size, bold, maxAncho){
+  var palabras = String(texto).split(/\s+/).filter(Boolean);
+  var lineas = [], actual = '';
+  palabras.forEach(function(w){
+    var prueba = actual ? actual + ' ' + w : w;
+    if (pdfAncho(prueba, size, bold) <= maxAncho || !actual){
+      actual = prueba;
+    } else {
+      lineas.push(actual);
+      actual = w;
+    }
+  });
+  if (actual) lineas.push(actual);
+  return lineas.length ? lineas : [''];
+}
+
+function pdfEscapar(s){
+  return s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+/* --- Documento -------------------------------------------------------------
+   Coordenadas en puntos, con el origen arriba a la izquierda (se convierte
+   internamente al sistema de PDF, que mide desde abajo). */
+function PdfDoc(opciones){
+  opciones = opciones || {};
+  this.w = opciones.ancho || 612;      /* carta */
+  this.h = opciones.alto  || 792;
+  this.paginas = [];
+  this.buf = '';
+  this.nuevaPagina();
+}
+PdfDoc.prototype.nuevaPagina = function(){
+  if (this.buf) this.paginas.push(this.buf);
+  this.buf = '';
+  return this;
+};
+PdfDoc.prototype._y = function(y){ return this.h - y; };
+
+PdfDoc.prototype.texto = function(x, y, txt, op){
+  op = op || {};
+  var size = op.size || 9;
+  var bold = !!op.bold;
+  var s = String(txt == null ? '' : txt);
+  if (op.maxWidth && pdfAncho(s, size, bold) > op.maxWidth){
+    /* Se recorta con puntos suspensivos antes que desbordar la celda. */
+    while (s.length > 1 && pdfAncho(s + '…', size, bold) > op.maxWidth) s = s.slice(0, -1);
+    s = s + '…';
+  }
+  var px = x;
+  if (op.align === 'center') px = x - pdfAncho(s, size, bold) / 2;
+  else if (op.align === 'right') px = x - pdfAncho(s, size, bold);
+  var gris = (op.gris == null) ? 0 : op.gris;
+  this.buf += 'BT ' + gris.toFixed(2) + ' g /' + (bold ? 'F2' : 'F1') + ' ' + size + ' Tf ' +
+    px.toFixed(2) + ' ' + this._y(y).toFixed(2) + ' Td (' + pdfEscapar(pdfWinAnsi(s)) + ') Tj ET\n';
+  return this;
+};
+
+PdfDoc.prototype.linea = function(x1, y1, x2, y2, grosor, gris){
+  this.buf += (grosor || 0.6).toFixed(2) + ' w ' + ((gris == null ? 0 : gris)).toFixed(2) + ' G ' +
+    x1.toFixed(2) + ' ' + this._y(y1).toFixed(2) + ' m ' +
+    x2.toFixed(2) + ' ' + this._y(y2).toFixed(2) + ' l S\n';
+  return this;
+};
+
+PdfDoc.prototype.rect = function(x, y, w, h, op){
+  op = op || {};
+  if (op.relleno != null){
+    this.buf += op.relleno.toFixed(2) + ' g ' + x.toFixed(2) + ' ' + this._y(y + h).toFixed(2) + ' ' +
+      w.toFixed(2) + ' ' + h.toFixed(2) + ' re f\n';
+  }
+  if (op.borde !== false){
+    this.buf += (op.grosor || 0.6).toFixed(2) + ' w ' + ((op.gris == null ? 0 : op.gris)).toFixed(2) + ' G ' +
+      x.toFixed(2) + ' ' + this._y(y + h).toFixed(2) + ' ' + w.toFixed(2) + ' ' + h.toFixed(2) + ' re S\n';
+  }
+  return this;
+};
+
+/* Serializa el documento completo a bytes. */
+PdfDoc.prototype.bytes = function(){
+  var paginas = this.paginas.slice();
+  if (this.buf) paginas.push(this.buf);
+  if (!paginas.length) paginas = [''];
+
+  var objetos = [];
+  var nPag = paginas.length;
+  /* 1 catálogo · 2 páginas · 3 F1 · 4 F2 · luego por página: objeto y stream */
+  var idsPagina = [];
+  for (var i = 0; i < nPag; i++) idsPagina.push(5 + i * 2);
+
+  objetos[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objetos[2] = '<< /Type /Pages /Count ' + nPag + ' /Kids [' +
+    idsPagina.map(function(id){ return id + ' 0 R'; }).join(' ') + '] >>';
+  objetos[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  objetos[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+
+  var self = this;
+  paginas.forEach(function(contenido, i){
+    var idP = 5 + i * 2, idC = idP + 1;
+    objetos[idP] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + self.w + ' ' + self.h + '] ' +
+      '/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' + idC + ' 0 R >>';
+    objetos[idC] = '<< /Length ' + contenido.length + ' >>\nstream\n' + contenido + 'endstream';
+  });
+
+  var salida = '%PDF-1.4\n';
+  var offsets = [];
+  for (var n = 1; n < objetos.length; n++){
+    offsets[n] = salida.length;
+    salida += n + ' 0 obj\n' + objetos[n] + '\nendobj\n';
+  }
+  var inicioXref = salida.length;
+  var total = objetos.length;
+  salida += 'xref\n0 ' + total + '\n0000000000 65535 f \n';
+  for (var k = 1; k < total; k++){
+    salida += ('0000000000' + offsets[k]).slice(-10) + ' 00000 n \n';
+  }
+  salida += 'trailer\n<< /Size ' + total + ' /Root 1 0 R >>\nstartxref\n' + inicioXref + '\n%%EOF';
+
+  var bytes = new Uint8Array(salida.length);
+  for (var b = 0; b < salida.length; b++) bytes[b] = salida.charCodeAt(b) & 0xFF;
+  return bytes;
+};
+
+/* Dispara la descarga del archivo en el navegador. */
+PdfDoc.prototype.descargar = function(nombre){
+  var blob = new Blob([this.bytes()], { type: 'application/pdf' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+};
+
+/* Nombre de archivo seguro: sin tildes ni caracteres raros. */
+function nombreArchivoSeguro(s){
+  return String(s)
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/_+/g, '_').replace(/^_|_$/g, '');
+}
+
+
+/* ---- acta_pdf.js ---- */
+/* ============================================================================
+   ACTA DEL PARTIDO EN PDF DESCARGABLE
+
+   Arma el mismo contenido que el acta impresa, pero como archivo .pdf que se
+   descarga directamente: no depende del diálogo de impresión ni de que el
+   usuario elija "Guardar como PDF".
+   ========================================================================== */
+
+/* Reúne los datos del acta en una estructura simple, compartida por la
+   versión impresa y la descargable. */
+function datosActa(matchId){
+  var p = getPartido(STATE, matchId);
+  if (!p) return null;
+  var t = matchRowTeams(p);
+  var acta = (STATE.actas || {})[matchId] || { acciones: [] };
+  var planilla = (STATE.planillas || {})[matchId] || {};
+  var m = marcadorDesdeActa(STATE, matchId);
+
+  function dorsalDe(lado, playerId){
+    var reg = planilla[lado] ? planilla[lado][playerId] : null;
+    var j = getJugador(STATE, playerId);
+    return (reg && reg.dorsal) ? reg.dorsal : (j ? j.dorsal : '');
+  }
+  function nombreDe(playerId){
+    var j = getJugador(STATE, playerId);
+    return j ? j.nombre : '—';
+  }
+
+  var acciones = (acta.acciones || []).slice().sort(function(a, b){
+    var ma = (a.minuto === null || a.minuto === '') ? 999 : Number(a.minuto);
+    var mb = (b.minuto === null || b.minuto === '') ? 999 : Number(b.minuto);
+    return ma - mb;
+  });
+
+  var filas = acciones.map(function(a){
+    var detalle;
+    if (a.tipo === 'sustitucion'){
+      detalle = 'Sale #' + dorsalDe(a.lado, a.playerId) + ' ' + nombreDe(a.playerId) +
+        ' · Entra #' + dorsalDe(a.lado, a.playerEntra) + ' ' + nombreDe(a.playerEntra) +
+        (a.entretiempo ? ' (entretiempo)' : '');
+    } else {
+      detalle = '#' + dorsalDe(a.lado, a.playerId) + ' ' + nombreDe(a.playerId);
+      if (a.detalle) detalle += ' — ' + a.detalle;
+      if (a.partidos) detalle += ' · ' + etiquetaSuspension(a.partidos);
+      if (a.multa) detalle += ' · ' + fmtMoney(a.multa);
+    }
+    return {
+      minuto: (a.minuto !== null && a.minuto !== '') ? a.minuto + "'" : '—',
+      equipo: a.lado === 'local' ? t.localNombre : t.visitaNombre,
+      accion: (TIPO_LABELS[a.tipo] || a.tipo).replace(/^[^\s]+\s/, ''),
+      detalle: detalle
+    };
+  });
+
+  function resumen(lado, nombre){
+    var r = resumenCambios(matchId, lado);
+    function cuenta(tipo){
+      return acciones.filter(function(a){ return a.tipo === tipo && a.lado === lado; }).length;
+    }
+    return {
+      equipo: nombre,
+      goles: cuenta('gol'), autogoles: cuenta('autogol'),
+      amarillas: cuenta('amarilla'), rojas: cuenta('roja'),
+      cambios: r.cambios + ' / ' + MAX_CAMBIOS,
+      ventanas: r.ventanas + ' / ' + MAX_VENTANAS + (r.entretiempo ? ' (+' + r.entretiempo + ' ET)' : '')
+    };
+  }
+
+  return {
+    partido: p, equipos: t, acta: acta, marcador: m, filas: filas,
+    resumen: [resumen('local', t.localNombre), resumen('visita', t.visitaNombre)]
+  };
+}
+
+/* Genera y descarga el acta como archivo PDF. */
+function descargarActaPdf(matchId){
+  var d = datosActa(matchId);
+  if (!d){ toast('No se encontró el partido.', true); return; }
+
+  var p = d.partido, t = d.equipos, acta = d.acta;
+  var M = 36;                       /* margen */
+  var doc = new PdfDoc();
+  var W = doc.w, ANCHO = W - M * 2;
+  var PIE = doc.h - M;
+  var y = M;
+
+  function encabezadoPagina(primera){
+    y = M;
+    doc.texto(M, y + 8, 'LIGA DE FÚTBOL ESTRELLAS DE BARRIO 2026 · PEÑALOLÉN', { size: 7.5, gris: 0.35 });
+    if (primera){
+      doc.texto(M, y + 26, 'Acta del partido', { size: 17, bold: true });
+      doc.texto(W - M, y + 26, 'Partido N°' + p.numero, { size: 11, bold: true, align: 'right' });
+      y += 33;
+    } else {
+      doc.texto(W - M, y + 8, 'Acta del partido N°' + p.numero + ' (continuación)',
+        { size: 7.5, gris: 0.35, align: 'right' });
+      y += 14;
+    }
+    doc.linea(M, y, W - M, y, 1.4);
+    y += 14;
+  }
+
+  encabezadoPagina(true);
+
+  /* --- Datos del encuentro --- */
+  var celdas = [
+    ['Grupo', p.grupo || '—'],
+    ['Fecha', p.jornada || '—'],
+    ['Día', p.dia ? fmtDateEs(p.dia) : '—'],
+    ['Hora', p.hora || '—'],
+    ['Estado', acta.cerrado ? 'Cerrada' : 'Abierta']
+  ];
+  var cw = ANCHO / celdas.length, alto = 26;
+  celdas.forEach(function(c, i){
+    var x = M + cw * i;
+    doc.rect(x, y, cw, alto, { gris: 0.25 });
+    doc.texto(x + cw / 2, y + 10, c[0].toUpperCase(), { size: 6.5, bold: true, align: 'center', gris: 0.35 });
+    doc.texto(x + cw / 2, y + 20, c[1], { size: 9, align: 'center', maxWidth: cw - 8 });
+  });
+  y += alto + 14;
+
+  /* --- Marcador --- */
+  doc.rect(M, y, ANCHO, 40, { grosor: 1.2 });
+  doc.texto(W / 2, y + 27, d.marcador.local + '  —  ' + d.marcador.visita, { size: 22, bold: true, align: 'center' });
+  doc.texto(W / 2 - 52, y + 25, t.localNombre, { size: 11, align: 'right', maxWidth: 170 });
+  doc.texto(W / 2 + 52, y + 25, t.visitaNombre, { size: 11, maxWidth: 170 });
+  y += 40 + 18;
+
+  function subtitulo(txt){
+    doc.texto(M, y, txt.toUpperCase(), { size: 8, bold: true });
+    y += 5;
+    doc.linea(M, y, W - M, y, 0.8);
+    y += 10;
+  }
+
+  /* --- Resumen por equipo --- */
+  subtitulo('Resumen por equipo');
+  var colsR = [
+    { t: 'Equipo', w: 152, k: 'equipo', al: 'left' },
+    { t: 'Goles', w: 58, k: 'goles' },
+    { t: 'Autogoles', w: 62, k: 'autogoles' },
+    { t: 'Amarillas', w: 62, k: 'amarillas' },
+    { t: 'Rojas', w: 52, k: 'rojas' },
+    { t: 'Cambios', w: 66, k: 'cambios' },
+    { t: 'Ventanas', w: 88, k: 'ventanas' }
+  ];
+  function filaTabla(cols, valores, op){
+    op = op || {};
+    var h = op.alto || 17, x = M;
+    cols.forEach(function(c){
+      doc.rect(x, y, c.w, h, { gris: 0.3, relleno: op.cabecera ? 0.90 : null });
+      var v = op.cabecera ? c.t.toUpperCase() : valores[c.k];
+      var al = c.al || 'center';
+      var tx = al === 'left' ? x + 5 : x + c.w / 2;
+      doc.texto(tx, y + h - 5.5, v, {
+        size: op.cabecera ? 6.5 : 8.5, bold: !!op.cabecera, align: al === 'left' ? 'left' : 'center',
+        maxWidth: c.w - 8, gris: op.cabecera ? 0.15 : 0
+      });
+      x += c.w;
+    });
+    y += h;
+  }
+  filaTabla(colsR, null, { cabecera: true, alto: 14 });
+  d.resumen.forEach(function(r){ filaTabla(colsR, r); });
+  y += 18;
+
+  /* --- Detalle cronológico --- */
+  subtitulo('Detalle cronológico de acciones');
+  var colsA = [
+    { t: 'Min.', w: 40, k: 'minuto' },
+    { t: 'Equipo', w: 128, k: 'equipo', al: 'left' },
+    { t: 'Acción', w: 78, k: 'accion' },
+    { t: 'Detalle', w: 294, k: 'detalle', al: 'left', envolver: true }
+  ];
+  function cabeceraAcciones(){ filaTabla(colsA, null, { cabecera: true, alto: 14 }); }
+  cabeceraAcciones();
+
+  if (!d.filas.length){
+    doc.rect(M, y, ANCHO, 17, { gris: 0.3 });
+    doc.texto(W / 2, y + 11.5, 'Sin acciones registradas.', { size: 8.5, align: 'center', gris: 0.4 });
+    y += 17;
+  }
+
+  d.filas.forEach(function(f){
+    var detCol = colsA[3];
+    var lineas = pdfCortar(f.detalle, 8.5, false, detCol.w - 10);
+    var h = Math.max(17, 6 + lineas.length * 11);
+    if (y + h > PIE - 18){
+      doc.nuevaPagina();
+      encabezadoPagina(false);
+      cabeceraAcciones();
+    }
+    var x = M;
+    colsA.forEach(function(c){
+      doc.rect(x, y, c.w, h, { gris: 0.3 });
+      if (c.envolver){
+        lineas.forEach(function(ln, i){
+          doc.texto(x + 5, y + 12 + i * 11, ln, { size: 8.5 });
+        });
+      } else {
+        var al = c.al || 'center';
+        doc.texto(al === 'left' ? x + 5 : x + c.w / 2, y + h / 2 + 3, f[c.k],
+          { size: 8.5, align: al === 'left' ? 'left' : 'center', maxWidth: c.w - 8 });
+      }
+      x += c.w;
+    });
+    y += h;
+  });
+
+  /* --- Pie: estado del acta y firmas --- */
+  if (y > PIE - 78){ doc.nuevaPagina(); encabezadoPagina(false); }
+  y += 14;
+  var pie = acta.cerrado
+    ? 'Acta cerrada por ' + (acta.cerradoPor || '—') + ' el ' + fmtDateEs((acta.cerradoEn || '').slice(0, 10)) +
+      ' a las ' + (acta.cerradoEn || '').slice(11, 16) + '.'
+    : 'Acta aún no cerrada: el detalle puede cambiar.';
+  doc.texto(M, y, pie, { size: 8, gris: 0.3 });
+
+  y = Math.max(y + 46, PIE - 34);
+  var firmas = ['Árbitro', 'Delegado ' + t.localNombre, 'Delegado ' + t.visitaNombre, 'Coordinación'];
+  var fw = ANCHO / 4;
+  firmas.forEach(function(txt, i){
+    var x = M + fw * i;
+    doc.linea(x + 8, y, x + fw - 8, y, 0.7);
+    doc.texto(x + fw / 2, y + 11, txt, { size: 7.5, align: 'center', maxWidth: fw - 12 });
+  });
+
+  var nombre = 'Acta_Partido_' + p.numero + '_' +
+    nombreArchivoSeguro(t.localNombre) + '_vs_' + nombreArchivoSeguro(t.visitaNombre) + '.pdf';
+  doc.descargar(nombre);
+  logActivity('Acta descargada en PDF', 'Partido N°' + p.numero + ' — ' + t.localNombre + ' vs ' + t.visitaNombre);
+  toast('Acta descargada: ' + nombre);
+}
+
+
 /* ---- ui_cierre_partido.js ---- */
 /* ============================================================================
    CIERRE DEL PARTIDO Y ACTA EN PDF
@@ -3460,7 +4131,8 @@ function tarjetaCierre(matchId, t){
         ? '<button class="btn btn-primary" id="btnCerrarPartido">🔒 Cerrar partido</button>' : '') +
       (cerrado && esAdmin()
         ? '<button class="btn btn-ghost btn-xs" id="btnReabrirPartido">🔓 Reabrir partido</button>' : '') +
-      '<button class="btn btn-gold" id="btnActaPdf">📄 Acta en PDF</button>' +
+      '<button class="btn btn-gold" id="btnActaDescargar">⬇️ Descargar acta (PDF)</button>' +
+      '<button class="btn btn-ghost" id="btnActaPdf">🖨️ Imprimir acta</button>' +
       '<button class="btn btn-ghost" id="btnVolverProg">← Volver a Programación</button>' +
     '</div>' +
   '</div>';
@@ -3471,6 +4143,8 @@ function initCierreEventos(matchId){
   if (bc) bc.addEventListener('click', function(){ cerrarPartido(matchId); });
   var br = document.getElementById('btnReabrirPartido');
   if (br) br.addEventListener('click', function(){ reabrirPartido(matchId); });
+  var bd = document.getElementById('btnActaDescargar');
+  if (bd) bd.addEventListener('click', function(){ descargarActaPdf(matchId); });
   var ba = document.getElementById('btnActaPdf');
   if (ba) ba.addEventListener('click', function(){ imprimirActa(matchId); });
   var bv = document.getElementById('btnVolverProg');
@@ -4943,34 +5617,10 @@ function escucharFirmas(matchId){
 
 /* Redibuja solo las celdas de acreditación y los contadores del partido */
 function refrescarAcreditacion(matchId){
-  var panel = document.getElementById('panel-planilla');
-  if (!panel) return;
-  var planilla = (STATE.planillas || {})[matchId] || {};
-
-  panel.querySelectorAll('.celda-firma').forEach(function(celda){
-    if (celda.dataset.match !== matchId) return;
-    var jid = celda.dataset.jugador;
-    var j = getJugador(STATE, jid);
-    if (!j) return;
-    var lado = (planilla.local && planilla.local[jid]) ? 'local' : 'visita';
-    var entry = (planilla[lado] || {})[jid] || { asiste: false };
-    celda.innerHTML = contenidoCeldaFirma(matchId, jid, entry.asiste);
-    initFirmasEventos(celda);
-  });
-
-  panel.querySelectorAll('.acred-contador').forEach(function(el){
-    var r = resumenAcreditacion(matchId, el.dataset.team, el.dataset.lado);
-    el.textContent = r.firmados + '/' + r.asisten + ' acreditados';
-    el.classList.toggle('txt-green', r.asisten > 0 && r.firmados === r.asisten);
-  });
-
-  var pill = document.getElementById('acredPill');
-  if (pill){
-    var faltan = jugadoresPorAcreditar(matchId);
-    pill.textContent = faltan ? faltan + ' por acreditar' : 'Todos acreditados';
-    pill.classList.toggle('pill-gold', !!faltan);
-    pill.classList.toggle('pill-green', !faltan);
-  }
+  /* Una firma que llega desde otro dispositivo mueve a esa persona de la
+     columna "Por acreditar" a la de "Acreditados", así que se repinta el
+     bloque completo (conservando el foco y lo que se esté escribiendo). */
+  if (typeof pintarAcredZonas === 'function') pintarAcredZonas(matchId);
 }
 
 /* Guarda UNA firma. Escribe solo ese campo, así dos dispositivos que acreditan
@@ -5111,7 +5761,8 @@ function abrirFirmaJugador(matchId, jugadorId){
       guardarFirma(matchId, jugadorId);
       registrarAvanceAcreditacion(matchId);
       cerrar();
-      renderPlanillaBody();
+      /* La persona pasa de la columna "Por acreditar" a la de "Acreditados". */
+      pintarAcredZonas(matchId);
       toast('Firma registrada.');
     }
   });
@@ -5141,8 +5792,8 @@ function borrarFirmaJugador(matchId, jugadorId){
       borrarFirmaRemota(matchId, jugadorId);
       var p = getPartido(STATE, matchId);
       logActivity('Firma de acreditación anulada', (j ? j.nombre : '') + ' — Partido N°' + (p ? p.numero : '?'));
-      renderAll();
-      renderPlanillaBody();
+      /* Vuelve a la columna de pendientes. */
+      pintarAcredZonas(matchId);
       toast('Firma anulada.');
     }
   });
