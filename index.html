@@ -503,7 +503,7 @@
         <span class="pill save-status pill-muted" id="saveStatus">● Cargando…</span>
         <button class="btn btn-ghost btn-xs needs-write" id="btnImport">📂 Importar datos</button>
         <input type="file" id="fileImport" accept="application/json" class="hidden">
-        <input type="file" id="fileNomina" accept=".xlsx" class="hidden">
+        <input type="file" id="fileNomina" accept=".xlsx" class="hidden" multiple>
         <input type="file" id="fileCausales" accept=".xlsx,.csv" class="hidden">
         <button class="btn btn-primary btn-xs" id="btnExport">📄 Ver / copiar mis datos</button>
         <button class="btn btn-ghost btn-xs" id="btnSalir">🚪 Salir</button>
@@ -869,7 +869,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.23-1';
+var APP_VERSION = 'v2026.09.23-2';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -1294,8 +1294,9 @@ function confirmModal(opts){
   });
   return wrap;
 }
-function alertModal(title, html){
-  confirmModal({ title: title, html: html, okText: 'Entendido', cancelText: false });
+function alertModal(title, html, alCerrar){
+  confirmModal({ title: title, html: html, okText: 'Entendido', cancelText: false,
+    onOk: alCerrar, onCancel: alCerrar });
 }
 
 /* ---------------------------------------------------------------------------
@@ -5662,31 +5663,33 @@ function abrirImportarNomina(){
   if (input){ input.value = ''; input.click(); }
 }
 
-async function procesarArchivoNomina(file){
+async function procesarArchivoNomina(file, pendientes){
   if (!file) return;
   if (!/\.xlsx$/i.test(file.name)){
     alertModal('Formato no reconocido',
-      '<p>Se espera el formato oficial de nómina en Excel (<strong>.xlsx</strong>). ' +
-      'Si el club le envió un .xls o un PDF, ábralo y guárdelo como .xlsx antes de importar.</p>');
+      '<p>«' + escapeHtml(file.name) + '» no es un Excel .xlsx. Se espera el formato oficial de nómina ' +
+      '(<strong>.xlsx</strong>): si el club le envió un .xls o un PDF, ábralo y guárdelo como .xlsx.</p>',
+      siguienteNomina);
     return;
   }
   var datos;
   try {
     datos = await leerNominaXlsx(file);
   } catch (err) {
-    alertModal('No se pudo leer la nómina', '<p>' + escapeHtml(err && err.message ? err.message : String(err)) + '</p>');
+    alertModal('No se pudo leer «' + file.name + '»',
+      '<p>' + escapeHtml(err && err.message ? err.message : String(err)) + '</p>', siguienteNomina);
     return;
   }
   if (!datos.jugadores.length){
-    alertModal('Nómina vacía',
+    alertModal('Nómina vacía en «' + file.name + '»',
       '<p>El archivo se leyó bien, pero no tiene jugadores escritos en el listado. ' +
-      'Revise que el club haya completado los nombres y vuelva a intentarlo.</p>');
+      'Revise que el club haya completado los nombres.</p>', siguienteNomina);
     return;
   }
-  mostrarModalNomina(datos, file.name);
+  mostrarModalNomina(datos, file.name, pendientes);
 }
 
-function mostrarModalNomina(datos, nombreArchivo){
+function mostrarModalNomina(datos, nombreArchivo, pendientes){
   var sugerido = equipoPorNombre(datos.club) || getEquipo(STATE, JUGADORES_SELECTED_TEAM);
   var opciones = ['A','B'].map(function(g){
     return '<optgroup label="Grupo ' + g + '">' + STATE.equipos.filter(function(e){ return e.grupo === g; }).map(function(e){
@@ -5743,9 +5746,11 @@ function mostrarModalNomina(datos, nombreArchivo){
       'los jugadores se cargan sin número de camiseta y el dorsal se asigna en la Planilla de Juego de cada partido.</p>';
 
   formModal({
-    title: 'Importar nómina de jugadores',
-    okText: 'Importar',
+    title: 'Importar nómina de jugadores' +
+      (pendientes ? ' (quedan ' + pendientes + ' archivo' + (pendientes === 1 ? '' : 's') + ')' : ''),
+    okText: pendientes ? 'Importar y seguir' : 'Importar',
     bodyHtml: body,
+    onCancel: siguienteNomina,
     onOk: function(form){
       var equipo = getEquipo(STATE, form.equipo.value);
       if (!equipo){ toast('Elija un equipo.', true); return false; }
@@ -5815,15 +5820,29 @@ function mostrarModalNomina(datos, nombreArchivo){
       var total = existentes + nuevos.length;
       toast('Nómina de ' + equipo.nombre + ' cargada: ' + nuevos.length + ' jugador(es).' +
         (total > NOMINA_MAX ? ' Atención: el equipo queda con ' + total + ', sobre el máximo de ' + NOMINA_MAX + '.' : ''));
+      /* Si venían varias nóminas seleccionadas, sigue con la próxima. */
+      setTimeout(siguienteNomina, 120);
     }
   });
+}
+
+/* Se pueden elegir varias nóminas a la vez (las 12 de una pasada): la
+   plataforma las va mostrando una por una para confirmar a qué club va cada
+   una, y sigue con la siguiente al cerrar cada cuadro. */
+var COLA_NOMINAS = [];
+
+function siguienteNomina(){
+  if (!COLA_NOMINAS.length) return;
+  var f = COLA_NOMINAS.shift();
+  procesarArchivoNomina(f, COLA_NOMINAS.length);
 }
 
 function initImportarNomina(){
   var input = document.getElementById('fileNomina');
   if (input) input.addEventListener('change', function(){
-    var f = input.files && input.files[0];
-    procesarArchivoNomina(f);
+    COLA_NOMINAS = Array.prototype.slice.call(input.files || []);
+    input.value = '';   /* permite volver a elegir los mismos archivos */
+    siguienteNomina();
   });
 }
 
