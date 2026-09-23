@@ -139,7 +139,15 @@
   table.tbl td.res-pierde, table.tbl td.res-pierde .num-input{ color:var(--pierde-txt); }
   table.tbl td.res-empata, table.tbl td.res-empata .num-input{ color:var(--empata-txt); }
 
+  /* Abreviatura de 3 letras, estilo marcador de fútbol */
+  .abrev-chip{ display:inline-block; min-width:44px; text-align:center; padding:3px 8px;
+    border-radius:7px; background:var(--panel-2); border:1px solid var(--line);
+    font-weight:800; font-size:12.5px; letter-spacing:1.2px; }
+
   /* Elegir el equipo en el registro de acciones tocando su escudo */
+  .lado-cuerpo{ display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .lado-abrev{ font-size:10.5px; font-weight:800; letter-spacing:1px; color:var(--muted); }
+  .lado-opt:has(input:checked) .lado-abrev{ color:var(--green-dark); }
   .lado-pick{ display:flex; gap:8px; }
   .lado-opt{ display:inline-flex; cursor:pointer; border:2px solid var(--line); border-radius:12px;
     padding:4px; background:var(--panel); transition:border-color .15s, background .15s; }
@@ -798,20 +806,56 @@ function buildCalendarSlots(totalPartidos, startIso){
 --------------------------------------------------------------------------- */
 var TEAM_IDS = {}; // 'A1'..'A6','B1'..'B6' -> team id real (uid)
 
+/* Cada club lleva una abreviatura de 3 letras, como en un marcador de fútbol.
+   Se usa donde el nombre completo no cabe: el registro de acciones, sobre todo.
+   Son editables desde Equipos y Datos. */
 var CLUBES_2026 = [
-  { slot:'A1', grupo:'A', nombre:"VILLA ROMAN" },
-  { slot:'A2', grupo:'A', nombre:"LA FRONTERA" },
-  { slot:'A3', grupo:'A', nombre:"INTER DE QUILIN" },
-  { slot:'A4', grupo:'A', nombre:"MANCHESTER" },
-  { slot:'A5', grupo:'A', nombre:"CHILESPORTING" },
-  { slot:'A6', grupo:'A', nombre:"COSANFI" },
-  { slot:'B1', grupo:'B', nombre:"UNIÓN LAS TORRES" },
-  { slot:'B2', grupo:'B', nombre:"VILLA LETELIER" },
-  { slot:'B3', grupo:'B', nombre:"JUVENTUD CATÓLICO" },
-  { slot:'B4', grupo:'B', nombre:"INTER DE MILÁN" },
-  { slot:'B5', grupo:'B', nombre:"UNIÓN MAY" },
-  { slot:'B6', grupo:'B', nombre:"LOS CEREZOS" },
+  { slot:'A1', grupo:'A', nombre:"VILLA ROMAN",       abrev:'VRO' },
+  { slot:'A2', grupo:'A', nombre:"LA FRONTERA",       abrev:'FRO' },
+  { slot:'A3', grupo:'A', nombre:"INTER DE QUILIN",   abrev:'IQU' },
+  { slot:'A4', grupo:'A', nombre:"MANCHESTER",        abrev:'MAN' },
+  { slot:'A5', grupo:'A', nombre:"CHILESPORTING",     abrev:'CHS' },
+  { slot:'A6', grupo:'A', nombre:"COSANFI",           abrev:'COS' },
+  { slot:'B1', grupo:'B', nombre:"UNIÓN LAS TORRES",  abrev:'ULT' },
+  { slot:'B2', grupo:'B', nombre:"VILLA LETELIER",    abrev:'VLE' },
+  { slot:'B3', grupo:'B', nombre:"JUVENTUD CATÓLICO", abrev:'JCA' },
+  { slot:'B4', grupo:'B', nombre:"INTER DE MILÁN",    abrev:'IMI' },
+  { slot:'B5', grupo:'B', nombre:"UNIÓN MAY",         abrev:'UMA' },
+  { slot:'B6', grupo:'B', nombre:"LOS CEREZOS",       abrev:'CER' },
 ];
+
+/* Arma una abreviatura razonable para un club que no esté en la lista de
+   arriba (uno renombrado o agregado a mano). */
+function abrevDesdeNombre(nombre){
+  var limpio = String(nombre || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  var palabras = limpio.split(/[^A-Z0-9]+/).filter(function(p){
+    return p && ['DE','DEL'].indexOf(p) === -1;
+  });
+  if (!palabras.length) return '---';
+  if (palabras.length === 1) return (palabras[0] + 'XX').slice(0, 3);
+  if (palabras.length === 2) return (palabras[0][0] + palabras[1] + 'XX').slice(0, 3);
+  return palabras.slice(0, 3).map(function(p){ return p[0]; }).join('');
+}
+
+/* Abreviatura vigente de un equipo. */
+function abrevEquipo(equipo){
+  if (!equipo) return '---';
+  if (equipo.abrev) return equipo.abrev;
+  var base = CLUBES_2026.filter(function(c){ return c.slot === equipo.slot; })[0];
+  return (base && base.abrev) ? base.abrev : abrevDesdeNombre(equipo.nombre);
+}
+
+/* Los equipos guardados antes de esta versión no traen abreviatura: se les
+   asigna una sola vez, por su casillero del sorteo o desde el nombre. */
+function migrarAbreviaturas(){
+  var cambios = 0;
+  (STATE.equipos || []).forEach(function(e){
+    if (e.abrev) return;
+    e.abrev = abrevEquipo(e);
+    cambios++;
+  });
+  return cambios;
+}
 
 /* Escudos oficiales de los 12 clubes, incrustados como imagen (JPEG 200px)
    para que el archivo siga siendo autocontenido. */
@@ -836,7 +880,7 @@ function crearEquiposIniciales(){
     var id = uid('team');
     TEAM_IDS[c.slot] = id;
     equipos.push({
-      id: id, slot: c.slot, grupo: c.grupo, nombre: c.nombre,
+      id: id, slot: c.slot, grupo: c.grupo, nombre: c.nombre, abrev: c.abrev,
       logo: ESCUDOS_2026[c.slot] || null, delegado: '', rut: '', celular: '', correo: ''
     });
   });
@@ -958,7 +1002,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.23-10';
+var APP_VERSION = 'v2026.09.23-11';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2110,6 +2154,9 @@ function renderEquipos(){
           '<button class="link-btn ir-plantel" data-id="' + e.id + '">' + escapeHtml(e.nombre) + '</button>' +
           (esAdmin() ? ' <button class="btn btn-ghost btn-xs eq-rename" data-id="' + e.id + '" title="Cambiar el nombre">✏️</button>' : '') +
         '</td>' +
+        '<td><input class="txt-input eq-abrev" data-id="' + e.id + '" value="' + escapeHtml(abrevEquipo(e)) +
+          '" maxlength="3" placeholder="ABR" style="width:58px;text-align:center;font-weight:800;' +
+          'letter-spacing:1.2px;text-transform:uppercase;"></td>' +
         '<td><input class="txt-input eq-delegado" data-id="' + e.id + '" value="' + escapeHtml(e.delegado) + '" placeholder="Nombre delegado" style="width:100%;min-width:150px;"></td>' +
         '<td><input class="txt-input eq-rut" data-id="' + e.id + '" value="' + escapeHtml(e.rut) + '" placeholder="RUT" style="width:110px;"></td>' +
         '<td><input class="txt-input eq-celular" data-id="' + e.id + '" value="' + escapeHtml(e.celular) + '" placeholder="Celular" style="width:110px;"></td>' +
@@ -2123,7 +2170,9 @@ function renderEquipos(){
       '<div class="card-head"><h3><span class="pill pill-' + g + '">GRUPO ' + g + '</span></h3>' +
       '<span class="muted" style="font-size:12px;">' + equipos.length + ' equipos</span></div>' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th></th><th title="Toque el nombre para ver el plantel">Nombre del equipo</th><th>Delegado</th><th>RUT</th><th>Celular</th><th>Correo</th><th>Escudo</th>' +
+      '<th></th><th title="Toque el nombre para ver el plantel">Nombre del equipo</th>' +
+      '<th title="Abreviatura de 3 letras, como en un marcador">Abr.</th>' +
+      '<th>Delegado</th><th>RUT</th><th>Celular</th><th>Correo</th><th>Escudo</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '</div>';
   }).join('');
@@ -2174,6 +2223,31 @@ function renderEquipos(){
         var eq = STATE.equipos.find(function(e){ return e.id === inp.dataset.id; });
         if (eq){ eq[field] = inp.value; renderAll(); }
       });
+    });
+  });
+
+  /* Abreviatura: 3 letras, en mayúsculas y sin repetirse entre clubes. */
+  panel.querySelectorAll('.eq-abrev').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var eq = STATE.equipos.find(function(e){ return e.id === inp.dataset.id; });
+      if (!eq) return;
+      var v = inp.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+      if (!v){ toast('La abreviatura no puede quedar vacía.', true); renderAll(); return; }
+      var repetida = STATE.equipos.filter(function(e){
+        return e.id !== eq.id && abrevEquipo(e) === v;
+      })[0];
+      if (repetida){
+        toast('«' + v + '» ya la usa ' + repetida.nombre + '. Elija otra.', true);
+        renderAll();
+        return;
+      }
+      var antes = abrevEquipo(eq);
+      if (antes === v){ renderAll(); return; }
+      eq.abrev = v;
+      logActivity('Abreviatura actualizada', eq.nombre + ': ' + antes + ' → ' + v);
+      renderAll();
+      toast('Abreviatura de ' + eq.nombre + ': ' + v);
     });
   });
   panel.querySelectorAll('.eq-logo-btn').forEach(function(btn){
@@ -3738,6 +3812,14 @@ function asistentesDeLado(matchId, teamId, lado){
 var TIPO_LABELS = { gol:'⚽ Gol', autogol:'🥅 Autogol', falta:'🚩 Falta', amarilla:'🟨 Amarilla', roja:'🟥 Roja',
   sustitucion:'🔄 Sustitución' };
 
+/* Abreviatura del club como la de un marcador, con el nombre completo al pasar
+   el cursor. */
+function chipAbrev(teamId, lado){
+  var e = getEquipo(STATE, teamId);
+  var titulo = (e ? e.nombre : '—') + (lado ? ' · ' + (lado === 'local' ? 'Local' : 'Visita') : '');
+  return '<span class="abrev-chip" title="' + escapeHtml(titulo) + '">' + escapeHtml(abrevEquipo(e)) + '</span>';
+}
+
 function renderActaHeader(p){
   var t = matchRowTeams(p);
   var acta = (STATE.actas || {})[p.id] || {};
@@ -5100,7 +5182,7 @@ function renderActaBody(){
       var regE = (jEntra && planilla && planilla[a.lado]) ? planilla[a.lado][a.playerEntra] : null;
       var dorsalEntra = regE && regE.dorsal ? regE.dorsal : (jEntra ? jEntra.dorsal : '');
       return '<tr>' +
-        '<td>' + (a.lado==='local' ? '<span class="pill pill-A">Local</span>' : '<span class="pill pill-B">Visita</span>') + '</td>' +
+        '<td>' + chipAbrev(a.lado === 'local' ? t.localId : t.visitaId, a.lado) + '</td>' +
         '<td>#' + dorsalFila + (jEntra ? '<div class="muted" style="font-size:11px;">#' + dorsalEntra + '</div>' : '') + '</td>' +
         '<td>' + (jEntra ? '<span style="color:var(--danger);">▼</span> ' : '') + escapeHtml(j?j.nombre:'—') +
           (jEntra ? '<div style="font-size:11.5px;"><span style="color:var(--green-dark);">▲</span> ' +
@@ -5142,7 +5224,9 @@ function renderActaBody(){
           [['local', t.localId, t.localNombre], ['visita', t.visitaId, t.visitaNombre]].map(function(e){
             return '<label class="lado-opt" title="' + escapeHtml(e[2]) + '">' +
               '<input type="radio" name="lado" value="' + e[0] + '"' + (e[0] === 'local' ? ' checked' : '') + '>' +
-              teamLogoHtml(getEquipo(STATE, e[1]), 'lg') +
+              '<span class="lado-cuerpo">' + teamLogoHtml(getEquipo(STATE, e[1]), 'lg') +
+                '<span class="lado-abrev">' + escapeHtml(abrevEquipo(getEquipo(STATE, e[1]))) + '</span>' +
+              '</span>' +
             '</label>';
           }).join('') +
         '</div></div>' +
@@ -8793,6 +8877,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   /* Nombres de la nómina en nombre propio (llegan en mayúsculas del Excel). */
   var nombresCorregidos = migrarNombresJugadores();
   if (nombresCorregidos) guardarTrasMigrar = true;
+  if (migrarAbreviaturas()) guardarTrasMigrar = true;
 
   renderAll();
   switchTab('equipos');
