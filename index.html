@@ -869,7 +869,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.22-3';
+var APP_VERSION = 'v2026.09.23-1';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -1388,6 +1388,7 @@ var SAVE_QUEUED = false;
 var SUPPRESS_NEXT_SAVE = false;
 var SAVE_DEBOUNCE_MS = 2200;
 var FIREBASE_READY = false;
+var FIREBASE_DB = null;
 var FIREBASE_DOC_REF = null;
 var LAST_SAVED_JSON = null;
 
@@ -1410,6 +1411,7 @@ function initFirebasePersistence(){
     try {
       if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
       var db = firebase.firestore();
+      FIREBASE_DB = db;
       FIREBASE_DOC_REF = db.collection(FIREBASE_COLECCION).doc(FIREBASE_DOCUMENTO);
       FIRMAS_DB = db;   // las firmas viven en su propia colección, un documento por partido
       FIREBASE_READY = true;
@@ -1472,6 +1474,7 @@ function iniciarEscuchaRemota(){
     if (!BOOTSTRAPPED) return; // el arranque inicial ya lo hace loadPersistedState()
     SUPPRESS_NEXT_SAVE = true;
     STATE = normalizarEstadoCargado(incoming);
+    guardarEspejoLocal(raw.json);
     renderAll();
     renderCurrentTab();
     setSaveStatus('guardado');
@@ -1485,25 +1488,79 @@ function iniciarEscuchaRemota(){
   });
 }
 
+/* Motivo por el que no se pudo cargar: lo usa el arranque para decidir si es
+   seguro escribir. 'vacio' = la base está limpia de verdad; cualquier otro
+   valor significa que NO sabemos qué hay guardado y no se debe sobrescribir. */
+var FALLO_CARGA = null;
+
 function loadPersistedState(){
-  if (!FIREBASE_DOC_REF) return Promise.resolve(null);
+  if (!FIREBASE_DOC_REF){ FALLO_CARGA = 'sin-conexion'; return Promise.resolve(null); }
   return FIREBASE_DOC_REF.get().then(function(snap){
-    if (!snap.exists) return null;
+    if (!snap.exists){ FALLO_CARGA = 'vacio'; return null; }
     var raw = snap.data();
-    if (!raw || !raw.json) return null;
+    if (!raw || !raw.json){ FALLO_CARGA = 'vacio'; return null; }
     var data;
-    try { data = JSON.parse(raw.json); } catch (e) { return null; }
-    if (!validarEstado(data)) return null;
+    try { data = JSON.parse(raw.json); }
+    catch (e){ FALLO_CARGA = 'json-danado'; return null; }
+    if (!validarEstado(data)){ FALLO_CARGA = 'formato'; return null; }
     LAST_SAVED_JSON = raw.json;
+    guardarEspejoLocal(raw.json);
+    FALLO_CARGA = null;
     return normalizarEstadoCargado(data);
   }).catch(function(err){
     console.error('No se pudo cargar el estado guardado:', err);
+    FALLO_CARGA = (err && err.code) ? err.code : 'error';
     if (err && err.code === 'permission-denied'){
       READ_ONLY = true;
       enterReadOnlyMode();
     }
     return null;
   });
+}
+
+/* Arranque seguro: si la base no respondió o vino dañada, la plataforma NO
+   trabaja con datos de fábrica ni los guarda encima. Se queda en solo lectura
+   y ofrece restaurar desde el espejo de este navegador. */
+function arranqueSeguro(ready){
+  if (!ready || !FALLO_CARGA) return;
+
+  var espejo = leerEspejoLocal();
+
+  if (FALLO_CARGA === 'vacio'){
+    /* La base está realmente vacía. Si este navegador tiene copia, se ofrece. */
+    if (espejo){
+      READ_ONLY = true;
+      enterReadOnlyMode();
+      avisarDatosEnRiesgo('La base en línea está vacía',
+        '<p>Firestore respondió, pero no hay nada guardado. Este navegador sí tiene una copia ' +
+        'del <b>' + escapeHtml(fmtDateEs((espejo.ts || '').slice(0,10))) + ' a las ' +
+        escapeHtml((espejo.ts || '').slice(11,16)) + '</b> con ' + espejo.datos.equipos.length +
+        ' equipos, ' + espejo.datos.partidos.length + ' partidos y ' + espejo.datos.jugadores.length +
+        ' personas inscritas.</p>' +
+        '<p>Mientras tanto la plataforma queda en solo lectura para no escribir encima.</p>',
+        [{ texto: 'Restaurar esa copia', clase: 'btn-primary', accion: function(){
+            READ_ONLY = false;
+            document.body.classList.remove('read-only');
+            restaurarDesdeJson(espejo.json, 'la copia local del ' + fmtDateEs((espejo.ts||'').slice(0,10)));
+            scheduleSave();
+          } },
+         { texto: 'Dejar la base vacía' }]);
+    }
+    return;
+  }
+
+  /* No sabemos qué hay guardado: modo seguro, pase lo que pase. */
+  READ_ONLY = true;
+  enterReadOnlyMode();
+  avisarDatosEnRiesgo('No se pudieron cargar los datos guardados',
+    '<p>La plataforma no logró leer lo que está en línea (<code>' + escapeHtml(String(FALLO_CARGA)) +
+    '</code>), así que quedó en <b>solo lectura</b>: no va a guardar nada encima de los datos reales.</p>' +
+    '<p>Revise su conexión y <b>recargue la página</b>. Si el problema sigue, avise antes de seguir ' +
+    'trabajando: los datos guardados no se han tocado.</p>' +
+    (espejo ? '<p>Este navegador tiene una copia del ' + escapeHtml(fmtDateEs((espejo.ts||'').slice(0,10))) +
+      ' por si hiciera falta.</p>' : ''),
+    [{ texto: 'Recargar', clase: 'btn-primary', accion: function(){ location.reload(); } },
+     { texto: 'Entendido' }]);
 }
 
 function setSaveStatus(kind){
@@ -1530,6 +1587,174 @@ function enterReadOnlyMode(){
   toast('Esta vista es de solo lectura: los cambios no se pueden guardar aquí.', true);
 }
 
+
+/* ============================================================================
+   BLINDAJE DE LOS DATOS
+
+   Tres candados para que la nómina y los partidos no se puedan perder:
+
+   1. ESPEJO LOCAL. Cada vez que se carga o se guarda bien, el estado completo
+      queda también en este navegador. Si un día la base en línea aparece vacía,
+      la plataforma lo detecta y ofrece restaurar desde esa copia.
+
+   2. CANDADO ANTI-VACIADO. Nunca se escribe en línea un estado que tenga menos
+      equipos, partidos o personas que el que estaba guardado. Si eso ocurre, el
+      guardado se detiene y avisa en pantalla en vez de sobrescribir.
+
+   3. RESPALDO DIARIO. La primera vez que se guarda cada día, se deja una copia
+      fechada aparte, en un documento propio. Quedan los últimos 10 días.
+   ========================================================================== */
+
+var RESPALDO_KEY = 'ebdb2026_respaldo';
+var RESPALDO_COL = 'estrellas2026_respaldos';
+var RESPALDO_DIAS = 10;
+var BLOQUEO_VACIADO = false;   // true cuando el candado 2 detuvo el guardado
+
+/* --- 1. Espejo local ------------------------------------------------------ */
+function guardarEspejoLocal(json){
+  try {
+    localStorage.setItem(RESPALDO_KEY, JSON.stringify({
+      json: json, ts: new Date().toISOString()
+    }));
+  } catch (e) { /* sin espacio o sin almacenamiento: no es crítico */ }
+}
+
+function leerEspejoLocal(){
+  try {
+    var raw = JSON.parse(localStorage.getItem(RESPALDO_KEY) || 'null');
+    if (!raw || !raw.json) return null;
+    var datos = JSON.parse(raw.json);
+    if (!validarEstado(datos)) return null;
+    return { datos: datos, ts: raw.ts, json: raw.json };
+  } catch (e) { return null; }
+}
+
+/* --- 2. Candado anti-vaciado ---------------------------------------------- */
+/* Cuenta lo que no se puede perder. Sirve para comparar dos estados. */
+function pesoEstado(d){
+  if (!d) return { equipos: 0, partidos: 0, jugadores: 0 };
+  return {
+    equipos: (d.equipos || []).length,
+    partidos: (d.partidos || []).length,
+    jugadores: (d.jugadores || []).length
+  };
+}
+
+/* Devuelve el motivo si el estado nuevo vacía al anterior, o null si está bien. */
+function motivoVaciado(anterior, nuevo){
+  if (!anterior) return null;
+  var a = pesoEstado(anterior), b = pesoEstado(nuevo);
+  /* Solo alarma cuando algo se va a cero o cae a menos de la mitad: borrar un
+     jugador suelto o un partido es normal y no debe molestar. */
+  var campos = [
+    ['jugadores', 'personas en las nóminas'],
+    ['equipos', 'equipos'],
+    ['partidos', 'partidos programados']
+  ];
+  for (var i = 0; i < campos.length; i++){
+    var k = campos[i][0];
+    if (a[k] > 0 && (b[k] === 0 || b[k] * 2 < a[k])){
+      return 'el guardado dejaría ' + b[k] + ' ' + campos[i][1] + ' donde antes había ' + a[k];
+    }
+  }
+  return null;
+}
+
+/* --- 3. Respaldo diario --------------------------------------------------- */
+function idRespaldoHoy(){
+  var d = new Date();
+  return 'dia_' + d.getFullYear() + '-' +
+    ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+
+var RESPALDO_HECHO_HOY = null;
+
+function guardarRespaldoDiario(json){
+  if (!FIREBASE_DB || READ_ONLY) return Promise.resolve();
+  var id = idRespaldoHoy();
+  if (RESPALDO_HECHO_HOY === id) return Promise.resolve();
+  RESPALDO_HECHO_HOY = id;
+  return FIREBASE_DB.collection(RESPALDO_COL).doc(id).set({
+    json: json, ts: new Date().toISOString()
+  }).then(function(){
+    return limpiarRespaldosViejos();
+  }).catch(function(err){
+    /* Que falle el respaldo no debe impedir trabajar. */
+    console.warn('No se pudo dejar el respaldo del día:', err);
+  });
+}
+
+function limpiarRespaldosViejos(){
+  if (!FIREBASE_DB) return Promise.resolve();
+  return FIREBASE_DB.collection(RESPALDO_COL).get().then(function(qs){
+    var ids = [];
+    qs.forEach(function(doc){ if (doc.id.indexOf('dia_') === 0) ids.push(doc.id); });
+    ids.sort();
+    var sobran = ids.slice(0, Math.max(0, ids.length - RESPALDO_DIAS));
+    return Promise.all(sobran.map(function(id){
+      return FIREBASE_DB.collection(RESPALDO_COL).doc(id).delete().catch(function(){});
+    }));
+  }).catch(function(){});
+}
+
+/* Lista los respaldos disponibles, del más nuevo al más viejo. */
+function listarRespaldos(){
+  if (!FIREBASE_DB) return Promise.resolve([]);
+  return FIREBASE_DB.collection(RESPALDO_COL).get().then(function(qs){
+    var out = [];
+    qs.forEach(function(doc){
+      var d = doc.data() || {};
+      if (!d.json) return;
+      var datos = null;
+      try { datos = JSON.parse(d.json); } catch (e) { return; }
+      out.push({ id: doc.id, ts: d.ts || '', json: d.json, peso: pesoEstado(datos) });
+    });
+    out.sort(function(a, b){ return a.id < b.id ? 1 : -1; });
+    return out;
+  }).catch(function(){ return []; });
+}
+
+/* --- Aviso en pantalla cuando algo huele mal ------------------------------ */
+function avisarDatosEnRiesgo(titulo, cuerpo, botones){
+  var root = document.getElementById('modalRoot');
+  if (!root) return;
+  if (document.getElementById('avisoRiesgo')) return;
+  var wrap = document.createElement('div');
+  wrap.className = 'modal-overlay';
+  wrap.id = 'avisoRiesgo';
+  wrap.innerHTML =
+    '<div class="modal" style="max-width:560px;">' +
+      '<h3>⚠️ ' + escapeHtml(titulo) + '</h3>' +
+      '<div style="font-size:13px;line-height:1.55;">' + cuerpo + '</div>' +
+      '<div class="modal-actions" id="avisoRiesgoAcc"></div>' +
+    '</div>';
+  root.appendChild(wrap);
+  var acc = wrap.querySelector('#avisoRiesgoAcc');
+  (botones || [{ texto: 'Entendido' }]).forEach(function(b){
+    var btn = document.createElement('button');
+    btn.className = 'btn ' + (b.clase || 'btn-ghost');
+    btn.textContent = b.texto;
+    btn.addEventListener('click', function(){
+      wrap.remove();
+      if (b.accion) b.accion();
+    });
+    acc.appendChild(btn);
+  });
+}
+
+/* Restaura el estado desde un JSON de respaldo (espejo local o copia del día). */
+function restaurarDesdeJson(json, origen){
+  var datos;
+  try { datos = JSON.parse(json); } catch (e) { toast('El respaldo está dañado.', true); return false; }
+  if (!validarEstado(datos)){ toast('El respaldo no tiene el formato esperado.', true); return false; }
+  STATE = normalizarEstadoCargado(datos);
+  logActivity('Datos restaurados desde respaldo', origen);
+  renderAll();
+  renderCurrentTab();
+  toast('Datos restaurados desde ' + origen + '.');
+  return true;
+}
+
 function scheduleSave(){
   if (!BOOTSTRAPPED) return;
   if (READ_ONLY) return;
@@ -1548,8 +1773,32 @@ async function performSave(){
   try {
     STATE.guardadoEn = new Date().toISOString();
     var json = JSON.stringify(STATE);
+
+    /* Candado: no se sobrescribe lo guardado con un estado que lo vacía. */
+    var anterior = null;
+    if (LAST_SAVED_JSON){ try { anterior = JSON.parse(LAST_SAVED_JSON); } catch (e) { anterior = null; } }
+    var motivo = motivoVaciado(anterior, STATE);
+    if (motivo){
+      BLOQUEO_VACIADO = true;
+      setSaveStatus('error');
+      SAVE_QUEUED = false;   /* no reintentar en bucle: el bloqueo es a propósito */
+      avisarDatosEnRiesgo('Guardado detenido para no perder datos',
+        '<p>La plataforma iba a guardar una versión mucho más pequeña que la que está en línea: ' +
+        escapeHtml(motivo) + '.</p>' +
+        '<p>No se guardó nada. Lo que está en línea sigue intacto. Lo más probable es que esta ' +
+        'pantalla no haya alcanzado a cargar los datos: <b>recargue la página</b> y vuelva a revisar ' +
+        'antes de seguir trabajando.</p>',
+        [{ texto: 'Recargar ahora', clase: 'btn-primary', accion: function(){ location.reload(); } },
+         { texto: 'Seguir sin guardar' }]);
+      return;
+    }
+
+    /* Antes de pisar lo anterior, queda la copia del día. */
+    if (LAST_SAVED_JSON) await guardarRespaldoDiario(LAST_SAVED_JSON);
+
     await FIREBASE_DOC_REF.set({ json: json, actualizadoEn: firebase.firestore.FieldValue.serverTimestamp() });
     LAST_SAVED_JSON = json;
+    guardarEspejoLocal(json);
     setSaveStatus('guardado');
   } catch (err) {
     console.error(err);
@@ -4944,7 +5193,52 @@ function renderHistorial(){
     '<div class="card">' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fecha y hora</th><th>Autor</th><th>Acción</th><th>Detalle</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table></div>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="card-head"><div><h3>Respaldos automáticos</h3>' +
+      '<p class="desc" style="margin:2px 0 0;">Cada día, antes del primer guardado, la plataforma deja una copia ' +
+      'completa aparte. Se conservan los últimos 10 días. Restaurar reemplaza todo lo que hay ahora por la copia ' +
+      'elegida.</p></div>' +
+      '<button class="btn btn-ghost btn-xs" id="btnVerRespaldos">🔄 Ver respaldos</button></div>' +
+      '<div id="respaldosBody"><p class="desc">Toque «Ver respaldos» para consultarlos.</p></div>' +
     '</div>';
+
+  var btnResp = document.getElementById('btnVerRespaldos');
+  if (btnResp) btnResp.addEventListener('click', function(){
+    var cont = document.getElementById('respaldosBody');
+    cont.innerHTML = '<p class="desc">Consultando…</p>';
+    listarRespaldos().then(function(lista){
+      if (!lista.length){
+        cont.innerHTML = '<p class="desc">Todavía no hay respaldos guardados. El primero se crea con el ' +
+          'próximo cambio que se guarde.</p>';
+        return;
+      }
+      cont.innerHTML = '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Día</th><th>Equipos</th>' +
+        '<th>Partidos</th><th>Personas inscritas</th><th></th></tr></thead><tbody>' +
+        lista.map(function(r){
+          return '<tr><td><b>' + escapeHtml(r.id.replace('dia_','')) + '</b></td>' +
+            '<td>' + r.peso.equipos + '</td><td>' + r.peso.partidos + '</td><td>' + r.peso.jugadores + '</td>' +
+            '<td><button class="btn btn-ghost btn-xs resp-restaurar" data-id="' + escapeHtml(r.id) + '">' +
+            '↩️ Restaurar</button></td></tr>';
+        }).join('') + '</tbody></table></div>';
+      cont.querySelectorAll('.resp-restaurar').forEach(function(b){
+        b.addEventListener('click', function(){
+          var r = lista.filter(function(x){ return x.id === b.dataset.id; })[0];
+          if (!r) return;
+          confirmModal({
+            title: 'Restaurar respaldo del ' + r.id.replace('dia_',''),
+            html: '<p>Se reemplazará <b>todo</b> lo que hay ahora por esa copia: ' + r.peso.equipos +
+              ' equipos, ' + r.peso.partidos + ' partidos y ' + r.peso.jugadores + ' personas inscritas.</p>' +
+              '<p>El cambio queda guardado en línea para todos. ¿Continuar?</p>',
+            okText: 'Restaurar', okClass: 'btn-danger',
+            onOk: function(){
+              if (restaurarDesdeJson(r.json, 'el respaldo del ' + r.id.replace('dia_',''))) scheduleSave();
+            }
+          });
+        });
+      });
+    });
+  });
 
   var filtroInput = document.getElementById('historialFiltro');
   filtroInput.addEventListener('input', function(){
@@ -7283,15 +7577,15 @@ document.addEventListener('DOMContentLoaded', async function(){
   var guardarTrasMigrar = migrarUsuarios();
   /* Nombres de la nómina en nombre propio (llegan en mayúsculas del Excel). */
   var nombresCorregidos = migrarNombresJugadores();
-  if (nombresCorregidos){
-    guardarTrasMigrar = true;
-    console.log('Nombres pasados a nombre propio: ' + nombresCorregidos);
-  }
-  if (guardarTrasMigrar) scheduleSave();
+  if (nombresCorregidos) guardarTrasMigrar = true;
 
   renderAll();
   switchTab('equipos');
   BOOTSTRAPPED = true;
+
+  /* Si la carga falló, de aquí no sale ninguna escritura. */
+  arranqueSeguro(ready);
+  if (guardarTrasMigrar && !READ_ONLY && !FALLO_CARGA) scheduleSave();
   setSaveStatus(ready ? 'guardado' : 'sinLinea');
 
   /* Si esta pestaña del navegador ya tenía sesión, se retoma; si no, queda la
