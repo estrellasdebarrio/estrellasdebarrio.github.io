@@ -32,6 +32,8 @@
     --blueA:#2f6fed; --blueA-soft:#e8f0ff;
     --orangeB:#e46a2e; --orangeB-soft:#fdece2;
     --danger:#d8384f; --danger-soft:#fbe4e8;
+    --gana:#d8f3e3; --pierde:#fbdfe4; --empata:#fdf0d2;
+    --gana-hover:#c9edd8; --pierde-hover:#f8d2d9; --empata-hover:#fbe8bf;
     --radius:14px; --shadow:0 8px 22px rgba(20,30,60,.08);
   }
   @media (prefers-color-scheme: dark){
@@ -43,6 +45,8 @@
       --blueA-soft:rgba(47,111,237,.20);
       --orangeB-soft:rgba(228,106,46,.20);
       --danger-soft:rgba(216,56,79,.22);
+      --gana:rgba(18,163,97,.26); --pierde:rgba(216,56,79,.26); --empata:rgba(232,169,43,.24);
+      --gana-hover:rgba(18,163,97,.36); --pierde-hover:rgba(216,56,79,.36); --empata-hover:rgba(232,169,43,.34);
       --shadow:0 8px 22px rgba(0,0,0,.45);
     }
   }
@@ -54,6 +58,8 @@
     --blueA-soft:rgba(47,111,237,.20);
     --orangeB-soft:rgba(228,106,46,.20);
     --danger-soft:rgba(216,56,79,.22);
+    --gana:rgba(18,163,97,.26); --pierde:rgba(216,56,79,.26); --empata:rgba(232,169,43,.24);
+    --gana-hover:rgba(18,163,97,.36); --pierde-hover:rgba(216,56,79,.36); --empata-hover:rgba(232,169,43,.34);
     --shadow:0 8px 22px rgba(0,0,0,.45);
   }
   *{ box-sizing:border-box; }
@@ -129,6 +135,16 @@
   table.tbl td{ padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
   table.tbl tbody tr:hover{ background:var(--panel-2); }
   table.tbl td.c, table.tbl th.c{ text-align:center; }
+
+  /* Resultado a la vista en Programación: ganador, perdedor y empate */
+  table.tbl td.res-gana{ background:var(--gana); }
+  table.tbl td.res-pierde{ background:var(--pierde); }
+  table.tbl td.res-empata{ background:var(--empata); }
+  table.tbl td.eq-cel.res-gana{ font-weight:700; }
+  table.tbl tbody tr:hover td.res-gana{ background:var(--gana-hover); }
+  table.tbl tbody tr:hover td.res-pierde{ background:var(--pierde-hover); }
+  table.tbl tbody tr:hover td.res-empata{ background:var(--empata-hover); }
+  table.tbl td.gol-cel .num-input{ background:transparent; }
   .tbl-wrap{ overflow-x:auto; }
   .num-input{ width:52px; text-align:center; border:1px solid var(--line); border-radius:7px; padding:5px 4px; }
   select, .txt-input{ border:1px solid var(--line); border-radius:7px; padding:6px 8px; background:var(--panel); color:var(--ink); }
@@ -873,7 +889,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.23-6';
+var APP_VERSION = 'v2026.09.23-7';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2171,22 +2187,34 @@ function renderProgramacion(){
        Cerrada la jornada, la corrección queda reservada al administrador. */
     var editable = puedeEditarResultado(p);
     var bloqueo = editable ? '' : ' disabled title="Jornada cerrada: solo el administrador puede corregir este resultado."';
+
+    /* Ganador en verde, perdedor en rojo, empate en amarillo — sobre el nombre
+       del club y su marcador, para leer la fila de un vistazo. */
+    var cl = '', cv = '';
+    if (p.golesLocal !== null && p.golesVisita !== null && p.golesLocal !== '' && p.golesVisita !== ''){
+      var gl = Number(p.golesLocal), gv = Number(p.golesVisita);
+      if (gl > gv){ cl = ' res-gana'; cv = ' res-pierde'; }
+      else if (gl < gv){ cl = ' res-pierde'; cv = ' res-gana'; }
+      else { cl = ' res-empata'; cv = ' res-empata'; }
+    }
     return '<tr data-match="' + p.id + '">' +
       '<td>' + p.numero + '</td>' +
       '<td>' + escapeHtml(p.jornada) + '</td>' +
       '<td>' + (p.grupo ? '<span class="pill pill-' + p.grupo + '">' + p.grupo + '</span>' : '<span class="pill pill-muted">—</span>') + '</td>' +
       '<td>' + fmtDateEs(p.dia) + '</td>' +
       '<td>' + p.hora + '</td>' +
-      '<td>' + escapeHtml(t.localNombre) + '</td>' +
-      '<td><input type="number" min="0" class="num-input gl-input"' + bloqueo + ' data-id="' + p.id + '" value="' + (p.golesLocal===null?'':p.golesLocal) + '"></td>' +
+      '<td class="eq-cel' + cl + '">' + escapeHtml(t.localNombre) + '</td>' +
+      '<td class="gol-cel' + cl + '"><input type="number" min="0" class="num-input gl-input"' + bloqueo + ' data-id="' + p.id + '" value="' + (p.golesLocal===null?'':p.golesLocal) + '"></td>' +
       '<td style="text-align:center;color:#9aa4bd;">vs</td>' +
-      '<td><input type="number" min="0" class="num-input gv-input"' + bloqueo + ' data-id="' + p.id + '" value="' + (p.golesVisita===null?'':p.golesVisita) + '"></td>' +
-      '<td>' + escapeHtml(t.visitaNombre) + '</td>' +
+      '<td class="gol-cel' + cv + '"><input type="number" min="0" class="num-input gv-input"' + bloqueo + ' data-id="' + p.id + '" value="' + (p.golesVisita===null?'':p.golesVisita) + '"></td>' +
+      '<td class="eq-cel' + cv + '">' + escapeHtml(t.visitaNombre) + '</td>' +
+      /* Penales y resultado escrito solo en la llave: en la fase de grupos no
+         existen los penales y el marcador ya se lee en la propia fila. */
       (esPenales ?
         ('<td><input type="number" min="0" class="num-input pl-input"' + bloqueo + ' data-id="' + p.id + '" placeholder="Pen." value="' + (p.penalesLocal===null?'':p.penalesLocal) + '"></td>' +
-         '<td><input type="number" min="0" class="num-input pv-input"' + bloqueo + ' data-id="' + p.id + '" placeholder="Pen." value="' + (p.penalesVisita===null?'':p.penalesVisita) + '"></td>')
-        : '<td></td><td></td>') +
-      '<td>' + resultadoTexto(p) + '</td>' +
+         '<td><input type="number" min="0" class="num-input pv-input"' + bloqueo + ' data-id="' + p.id + '" placeholder="Pen." value="' + (p.penalesVisita===null?'':p.penalesVisita) + '"></td>' +
+         '<td>' + resultadoTexto(p) + '</td>')
+        : '') +
       '<td style="white-space:nowrap;">' +
         '<button class="btn btn-gold btn-xs ir-planilla" data-id="' + p.id + '">▶ IR A PARTIDO</button>' +
         (!editable ? ' <span class="muted" style="font-size:11px;" title="Solo el administrador puede corregir un resultado de una jornada cerrada.">🔒</span>'
@@ -2200,12 +2228,11 @@ function renderProgramacion(){
       '<div class="card-head"><div><h3>Fase de grupos</h3>' +
       '<p class="desc" style="margin:2px 0 0;">Todos contra todos a una rueda, 5 fechas. Calendario vigente: dos partidos por día (21:00 y 22:00), de lunes a jueves, ordenado para maximizar el descanso entre partidos de cada club.</p></div>' +
       '<div class="row-flex">' +
-        (puedeEditarAlgo() ? '<button class="btn btn-gold btn-xs" id="btnImportActas">📥 Importar actas</button>' : '') +
         '<button class="btn btn-ghost btn-xs" id="btnExportActas">⬇️ Guardar todas las actas</button>' +
         (esAdmin() ? '<button class="btn btn-primary btn-xs" id="btnAddMatch">➕ Agregar partido</button>' : '') +
       '</div></div>' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>N°</th><th>Fecha</th><th>Grupo</th><th>Día</th><th>Hora</th><th>Local</th><th>GL</th><th></th><th>GV</th><th>Visita</th><th>Pen. L</th><th>Pen. V</th><th>Resultado</th><th>Planilla</th>' +
+      '<th>N°</th><th>Fecha</th><th>Grupo</th><th>Día</th><th>Hora</th><th>Local</th><th>GL</th><th></th><th>GV</th><th>Visita</th><th>Planilla</th>' +
       '</tr></thead><tbody>' + grupos.map(fila).join('') + '</tbody></table></div>' +
     '</div>' +
     '<div class="card">' +
@@ -2286,11 +2313,6 @@ function renderProgramacion(){
   var btnAdd = document.getElementById('btnAddMatch');
   if (btnAdd) btnAdd.addEventListener('click', abrirModalAgregarPartido);
 
-  var bIA = document.getElementById('btnImportActas');
-  if (bIA) bIA.addEventListener('click', function(){
-    var inp = document.getElementById('fileActas');
-    if (inp) inp.click();
-  });
   var bEA = document.getElementById('btnExportActas');
   if (bEA) bEA.addEventListener('click', descargarTodasLasActas);
 }
@@ -4719,6 +4741,7 @@ function tarjetaCierre(matchId, t){
         ? '<button class="btn btn-ghost btn-xs" id="btnReabrirPartido">🔓 Reabrir partido</button>' : '') +
       '<button class="btn btn-gold" id="btnActaDescargar">⬇️ Descargar acta (PDF)</button>' +
       '<button class="btn btn-ghost" id="btnActaDatos">💾 Guardar acta (respaldo)</button>' +
+      (puedeEditarAlgo() ? '<button class="btn btn-ghost" id="btnActaImportar">📥 Importar acta</button>' : '') +
       '<button class="btn btn-ghost" id="btnActaPdf">🖨️ Imprimir acta</button>' +
       '<button class="btn btn-ghost" id="btnVolverProg">← Volver a Programación</button>' +
     '</div>' +
@@ -4734,6 +4757,8 @@ function initCierreEventos(matchId){
   if (bd) bd.addEventListener('click', function(){ descargarActaPdf(matchId); });
   var bdd = document.getElementById('btnActaDatos');
   if (bdd) bdd.addEventListener('click', function(){ descargarActaDatos(matchId); });
+  var bim = document.getElementById('btnActaImportar');
+  if (bim) bim.addEventListener('click', function(){ importarActaDePartido(matchId); });
   var ba = document.getElementById('btnActaPdf');
   if (ba) ba.addEventListener('click', function(){ imprimirActa(matchId); });
   var bv = document.getElementById('btnVolverProg');
@@ -4784,8 +4809,22 @@ function renderActaBody(){
   var asistLocal = asistentesDeLado(p.id, t.localId, 'local');
   var asistVisita = asistentesDeLado(p.id, t.visitaId, 'visita');
   if (!planilla || (asistLocal.length===0 && asistVisita.length===0)){
+    /* Sin asistentes no hay registro que mostrar, pero igual se deja a mano la
+       importación del acta: es justamente el caso de un partido que hay que
+       reponer desde su archivo de respaldo. */
     body.innerHTML = '<div class="card"><div class="empty-hint">Marque arriba quiénes asisten para poder registrar ' +
-      'goles, faltas y tarjetas de este partido.</div></div>';
+      'goles, faltas y tarjetas de este partido.</div>' +
+      (puedeEditarAlgo()
+        ? '<p class="desc" style="margin:12px 0 8px;">Si este partido ya se jugó y tiene su archivo de respaldo, ' +
+          'puede reponerlo completo —nómina, marcador y acciones— sin digitarlo de nuevo.</p>' +
+          '<div class="row-flex"><button class="btn btn-gold btn-xs" id="btnActaImportarVacio">📥 Importar acta</button>' +
+          '<button class="btn btn-ghost btn-xs" id="btnVolverProgVacio">← Volver a Programación</button></div>'
+        : '') +
+    '</div>';
+    var biv = document.getElementById('btnActaImportarVacio');
+    if (biv) biv.addEventListener('click', function(){ importarActaDePartido(p.id); });
+    var bvv = document.getElementById('btnVolverProgVacio');
+    if (bvv) bvv.addEventListener('click', function(){ switchTab('programacion'); });
     return;
   }
 
@@ -5382,6 +5421,10 @@ function revisarActa(d){
   if (!t.localId || !t.visitaId) return { error: 'El partido N°' + num + ' todavía no tiene equipos definidos.' };
 
   var avisos = [];
+  if (ACTA_PARTIDO_ESPERADO && ACTA_PARTIDO_ESPERADO !== num){
+    avisos.push('Usted abrió la importación desde el partido N°' + ACTA_PARTIDO_ESPERADO + ', pero este archivo ' +
+      'es del partido N°' + num + '. Se cargará en el N°' + num + ', que es el que corresponde al acta.');
+  }
   if (normTexto(t.localNombre) !== normTexto(d.local.nombre) ||
       normTexto(t.visitaNombre) !== normTexto(d.visita.nombre)){
     avisos.push('El acta dice «' + d.local.nombre + ' vs ' + d.visita.nombre + '» y en la programación el N°' +
@@ -5531,7 +5574,7 @@ function reponerSancionesDeActa(p, acta){
 var COLA_ACTAS = [];
 
 function siguienteActa(){
-  if (!COLA_ACTAS.length) return;
+  if (!COLA_ACTAS.length){ ACTA_PARTIDO_ESPERADO = null; return; }
   var f = COLA_ACTAS.shift();
   leerArchivoActa(f, COLA_ACTAS.length);
 }
@@ -5612,6 +5655,28 @@ function mostrarModalActa(d, nombreArchivo, pendientes){
     }
   });
 }
+
+/* Importar desde la planilla de un partido: el archivo se carga en el partido
+   que indica el propio acta, y si no es el que está abierto se avisa antes. */
+function importarActaDePartido(matchId){
+  var inp = document.getElementById('fileActas');
+  if (!inp) return;
+  inp.onchange = function(){
+    var files = Array.prototype.slice.call(inp.files || []);
+    inp.value = '';
+    inp.onchange = null;
+    if (!files.length) return;
+    var p = getPartido(STATE, matchId);
+    COLA_ACTAS = files;
+    ACTA_PARTIDO_ESPERADO = p ? p.numero : null;
+    siguienteActa();
+  };
+  inp.click();
+}
+
+/* Número del partido desde el que se pidió la importación, para avisar si el
+   archivo corresponde a otro. */
+var ACTA_PARTIDO_ESPERADO = null;
 
 function initImportarActas(){
   var input = document.getElementById('fileActas');
