@@ -873,7 +873,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.23-5';
+var APP_VERSION = 'v2026.09.23-6';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -7098,43 +7098,92 @@ function cargarArchivoFirmas(file, matchId, alTerminar){
     try { d = JSON.parse(ev.target.result); }
     catch (e){ alertModal('Archivo no válido', '<p>El archivo no es un JSON válido.</p>'); return; }
 
-    /* Forma 1: { "<idPartido>": { firmas: {...} } } — lo que baja el rescate. */
-    var mapa = null;
-    if (d && d[matchId] && d[matchId].firmas) mapa = d[matchId].firmas;
-    /* Forma 2: { firmas: {...} } — un solo partido. */
-    else if (d && d.firmas) mapa = d.firmas;
-    /* Forma 3: el archivo trae varios partidos y ninguno es este: se toma el
-       que tenga más firmas, avisando. */
-    else if (d && typeof d === 'object'){
-      var candidatos = Object.keys(d).filter(function(k){ return d[k] && d[k].firmas; });
-      if (candidatos.length){
-        candidatos.sort(function(a, b){
-          return Object.keys(d[b].firmas).length - Object.keys(d[a].firmas).length;
-        });
-        mapa = d[candidatos[0]].firmas;
-      } else {
-        /* Forma 4: plano { "<idJugador>": {img, ts, autor} } */
+    /* Se arma la lista de "documentos de firmas" que trae el archivo, sea cual
+       sea su forma, y se deja ver cuál corresponde a cada partido. */
+    var docs = [];   /* { idPartido, firmas } */
+    if (d && d.firmas && typeof d.firmas === 'object'){
+      docs.push({ id: d.partido || '(sin partido)', firmas: d.firmas });
+    } else if (d && typeof d === 'object'){
+      Object.keys(d).forEach(function(k){
+        if (d[k] && d[k].firmas && typeof d[k].firmas === 'object') docs.push({ id: k, firmas: d[k].firmas });
+      });
+      if (!docs.length){
         var plano = Object.keys(d).filter(function(k){ return d[k] && d[k].img; });
-        if (plano.length){ mapa = d; }
+        if (plano.length){
+          var m = {}; plano.forEach(function(k){ m[k] = d[k]; });
+          docs.push({ id: '(sin partido)', firmas: m });
+        }
       }
     }
 
-    if (!mapa || !Object.keys(mapa).length){
-      alertModal('Sin firmas', '<p>El archivo no trae ninguna firma que se pueda cargar.</p>');
+    if (!docs.length){
+      alertModal('Este archivo no tiene firmas',
+        '<p>El archivo se leyó bien, pero no contiene ninguna firma.</p>' +
+        '<p>El archivo correcto es el que baja el <b>segundo</b> botón de la página de rescate, ' +
+        '«Descargar las firmas (JSON)», y se llama <code>firmas_estrellas_&lt;fecha&gt;.json</code>. ' +
+        'El del primer botón (<code>respaldo_estrellas_…</code>) es el estado del campeonato y no sirve aquí.</p>');
       return;
     }
 
-    var f = firmasDe(matchId);
-    var nuevas = 0;
-    Object.keys(mapa).forEach(function(id){
-      if (!mapa[id] || !mapa[id].img) return;
-      if (f[id]) return;          /* ya está: no se pisa */
-      f[id] = mapa[id];
-      nuevas++;
+    /* Si el archivo trae el partido que está abierto, se usa ese. Si no, se
+       pregunta cuál cargar: cargar las firmas de otro partido sería un error. */
+    var propio = docs.filter(function(x){ return x.id === matchId; })[0];
+    if (propio){ aplicar(propio); return; }
+
+    if (docs.length === 1){
+      var u = docs[0];
+      confirmModal({
+        title: 'El archivo es de otro partido',
+        html: '<p>El archivo trae ' + Object.keys(u.firmas).length + ' firma(s) del partido ' +
+          '<b>' + escapeHtml(String(u.id)) + '</b>, y usted tiene abierto el <b>' + escapeHtml(matchId) + '</b>.</p>' +
+          '<p>¿Cargarlas igual en el partido abierto?</p>',
+        okText: 'Cargar igual', okClass: 'btn-danger', cancelText: 'Cancelar',
+        onOk: function(){ aplicar(u); }
+      });
+      return;
+    }
+
+    var opts = docs.map(function(x, i){
+      return '<option value="' + i + '">' + escapeHtml(String(x.id)) + ' — ' +
+        Object.keys(x.firmas).length + ' firma(s)</option>';
+    }).join('');
+    formModal({
+      title: 'Elija de qué partido cargar las firmas',
+      okText: 'Cargar',
+      bodyHtml: '<p style="font-size:12.8px;">El archivo trae firmas de varios partidos y ninguna es del que ' +
+        'está abierto (' + escapeHtml(matchId) + '). Elija cuál cargar aquí.</p>' +
+        '<div class="field"><label>Partido del archivo</label><select name="cual">' + opts + '</select></div>',
+      onOk: function(form){ aplicar(docs[Number(form.cual.value)]); }
     });
-    guardarFirmasLocal(matchId);
-    toast(nuevas + ' firma(s) cargadas. Asígnelas a cada jugador.');
-    if (alTerminar) alTerminar();
+
+    function aplicar(doc){
+      var f = firmasDe(matchId);
+      var nuevas = 0, yaEstaban = 0, sinImagen = 0;
+      Object.keys(doc.firmas).forEach(function(id){
+        var reg = doc.firmas[id];
+        if (!reg || !reg.img){ sinImagen++; return; }
+        if (f[id]){ yaEstaban++; return; }
+        f[id] = reg;
+        nuevas++;
+      });
+      guardarFirmasLocal(matchId);
+      /* Las que ya estaban asignadas a un jugador vigente no son "por asignar". */
+      var huer = firmasHuerfanas(matchId).length;
+      var conDueno = Object.keys(f).length - huer;
+
+      alertModal('Firmas del archivo',
+        '<div style="font-size:13px;line-height:1.6;">' +
+          '<p style="margin:0 0 8px;">El archivo traía <b>' + Object.keys(doc.firmas).length + ' firma(s)</b> ' +
+          'del partido <b>' + escapeHtml(String(doc.id)) + '</b>.</p>' +
+          '<ul style="margin:0 0 10px;padding-left:18px;">' +
+            '<li><b>' + nuevas + '</b> se agregaron.</li>' +
+            '<li><b>' + yaEstaban + '</b> ya estaban guardadas en este partido.</li>' +
+            (sinImagen ? '<li><b>' + sinImagen + '</b> venían sin el trazo de la firma y se omitieron.</li>' : '') +
+          '</ul>' +
+          '<p style="margin:0;">En este partido hay ahora <b>' + Object.keys(f).length + ' firma(s)</b>: ' +
+          conDueno + ' ya asignadas a un jugador y <b>' + huer + ' por asignar</b>.</p>' +
+        '</div>', alTerminar);
+    }
   };
   lector.readAsText(file);
 }
@@ -7182,10 +7231,18 @@ function abrirPanelFirmas(matchId){
 
   function pintar(){
     var cont = wrap.querySelector('#firmasHuerBody');
+    var todas = Object.keys(firmasDe(matchId)).length;
     var huer = firmasHuerfanas(matchId);
+    var estado = '<p class="desc" style="margin:0 0 10px;">Este partido tiene <b>' + todas + ' firma(s)</b> ' +
+      'guardadas: ' + (todas - huer.length) + ' ya asignadas a un jugador y <b>' + huer.length +
+      ' por asignar</b>.</p>';
     if (!huer.length){
-      cont.innerHTML = '<p class="desc">No quedan firmas sin asignar en este partido. Si tiene el archivo de ' +
-        'respaldo de firmas, cárguelo con el botón de abajo.</p>';
+      cont.innerHTML = estado +
+        (todas
+          ? '<p class="desc">No queda ninguna por asignar.</p>'
+          : '<p class="desc">No hay ninguna firma guardada en este partido. Si tiene el archivo de respaldo ' +
+            '(<code>firmas_estrellas_&lt;fecha&gt;.json</code>, el del segundo botón de la página de rescate), ' +
+            'cárguelo con el botón de abajo.</p>');
       return;
     }
     var t = matchRowTeams(p);
@@ -7216,7 +7273,7 @@ function abrirPanelFirmas(matchId){
       return;
     }
 
-    cont.innerHTML = '<p style="font-size:12.5px;margin:0 0 8px;"><b>' + huer.length + '</b> firma(s) por asignar.</p>' +
+    cont.innerHTML = estado +
       '<div class="tbl-wrap" style="max-height:340px;overflow:auto;"><table class="tbl"><thead><tr>' +
       '<th style="width:44px;">N°</th><th style="width:70px;">Hora</th><th style="width:150px;">Firma</th>' +
       '<th>Asignar a</th><th></th></tr></thead><tbody>' +
