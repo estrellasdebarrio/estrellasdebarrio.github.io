@@ -128,6 +128,7 @@
     text-transform:uppercase; letter-spacing:.4px; padding:9px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
   table.tbl td{ padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
   table.tbl tbody tr:hover{ background:var(--panel-2); }
+  table.tbl td.c, table.tbl th.c{ text-align:center; }
   .tbl-wrap{ overflow-x:auto; }
   .num-input{ width:52px; text-align:center; border:1px solid var(--line); border-radius:7px; padding:5px 4px; }
   select, .txt-input{ border:1px solid var(--line); border-radius:7px; padding:6px 8px; background:var(--panel); color:var(--ink); }
@@ -501,9 +502,12 @@
         <span class="pill pill-muted" id="userChip">👤 Sin sesión</span>
         <span class="pill pill-muted" id="rolChip"></span>
         <span class="pill save-status pill-muted" id="saveStatus">● Cargando…</span>
+        <button class="btn btn-danger btn-xs hidden" id="btnRecuperar">🛟 Recuperar datos</button>
         <button class="btn btn-ghost btn-xs needs-write" id="btnImport">📂 Importar datos</button>
         <input type="file" id="fileImport" accept="application/json" class="hidden">
         <input type="file" id="fileNomina" accept=".xlsx" class="hidden" multiple>
+        <input type="file" id="fileActas" accept="application/json,.json" class="hidden" multiple>
+        <input type="file" id="fileFirmas" accept="application/json,.json" class="hidden">
         <input type="file" id="fileCausales" accept=".xlsx,.csv" class="hidden">
         <button class="btn btn-primary btn-xs" id="btnExport">📄 Ver / copiar mis datos</button>
         <button class="btn btn-ghost btn-xs" id="btnSalir">🚪 Salir</button>
@@ -869,7 +873,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.23-2';
+var APP_VERSION = 'v2026.09.23-5';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -1494,7 +1498,23 @@ function iniciarEscuchaRemota(){
    valor significa que NO sabemos qué hay guardado y no se debe sobrescribir. */
 var FALLO_CARGA = null;
 
-function loadPersistedState(){
+/* La lectura se reintenta antes de rendirse: en la cancha, con señal débil,
+   el primer intento puede no llegar y eso no significa que no haya datos. */
+async function loadPersistedState(intentos){
+  intentos = intentos || 3;
+  for (var i = 1; i <= intentos; i++){
+    var r = await intentarCargaUnaVez();
+    if (r || FALLO_CARGA === 'vacio') return r;
+    if (FALLO_CARGA === 'permission-denied') return null;
+    if (i < intentos){
+      setSaveStatus('actualizando');
+      await new Promise(function(ok){ setTimeout(ok, 1200 * i); });
+    }
+  }
+  return null;
+}
+
+function intentarCargaUnaVez(){
   if (!FIREBASE_DOC_REF){ FALLO_CARGA = 'sin-conexion'; return Promise.resolve(null); }
   return FIREBASE_DOC_REF.get().then(function(snap){
     if (!snap.exists){ FALLO_CARGA = 'vacio'; return null; }
@@ -1754,6 +1774,142 @@ function restaurarDesdeJson(json, origen){
   renderCurrentTab();
   toast('Datos restaurados desde ' + origen + '.');
   return true;
+}
+
+
+/* ============================================================================
+   RECUPERACIÓN EN CANCHA
+
+   Si un día la plataforma aparece sin nóminas, quien esté de turno —no solo el
+   administrador— tiene que poder devolverlas ahí mismo, sin llamar a nadie.
+
+   El botón "🛟 Recuperar datos" aparece solo cuando hace falta (no hay ninguna
+   persona inscrita) y lo ve cualquier perfil que pueda editar. Ofrece, en un
+   mismo cuadro, las tres fuentes posibles: la copia de este dispositivo, los
+   respaldos diarios en línea y un archivo JSON guardado a mano.
+
+   Antes de reemplazar nada, deja una copia de lo que hay, para que la
+   recuperación también se pueda deshacer.
+   ========================================================================== */
+
+function faltanDatos(){
+  return BOOTSTRAPPED && !!SESION && (STATE.jugadores || []).length === 0;
+}
+
+function refrescarBotonRecuperar(){
+  var b = document.getElementById('btnRecuperar');
+  if (!b) return;
+  b.classList.toggle('hidden', !(faltanDatos() && puedeEditarAlgo()));
+}
+
+/* Copia de seguridad de lo que hay AHORA, antes de restaurar algo encima. */
+function guardarRespaldoPrevio(){
+  if (!FIREBASE_DB || READ_ONLY) return Promise.resolve();
+  var id = 'previo_' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '');
+  return FIREBASE_DB.collection(RESPALDO_COL).doc(id).set({
+    json: JSON.stringify(STATE), ts: new Date().toISOString()
+  }).catch(function(){ /* no debe impedir la recuperación */ });
+}
+
+function filaFuente(f){
+  return '<tr>' +
+    '<td><b>' + escapeHtml(f.titulo) + '</b><div class="muted" style="font-size:11px;">' +
+      escapeHtml(f.cuando) + '</div></td>' +
+    '<td class="c">' + f.peso.equipos + '</td>' +
+    '<td class="c">' + f.peso.partidos + '</td>' +
+    '<td class="c"><b class="' + (f.peso.jugadores ? 'txt-green' : '') + '">' + f.peso.jugadores + '</b></td>' +
+    '<td><button class="btn btn-primary btn-xs rec-usar" data-clave="' + escapeHtml(f.clave) + '">Restaurar</button></td>' +
+  '</tr>';
+}
+
+function abrirPanelRecuperacion(){
+  var fuentes = [];
+  var espejo = leerEspejoLocal();
+  if (espejo){
+    fuentes.push({
+      clave: 'local', titulo: 'Copia de este dispositivo',
+      cuando: fmtDateEs((espejo.ts || '').slice(0, 10)) + ' a las ' + (espejo.ts || '').slice(11, 16),
+      peso: pesoEstado(espejo.datos), json: espejo.json
+    });
+  }
+
+  var wrap = document.createElement('div');
+  wrap.className = 'modal-overlay';
+  wrap.innerHTML =
+    '<div class="modal" style="max-width:660px;">' +
+      '<h3>🛟 Recuperar los datos del campeonato</h3>' +
+      '<p style="font-size:12.8px;color:var(--muted);line-height:1.55;margin:0 0 12px;">' +
+        'La plataforma no tiene ninguna persona inscrita. Elija desde dónde reponerla. Antes de reemplazar ' +
+        'nada se guarda una copia de lo que hay ahora, así que esto se puede deshacer.</p>' +
+      '<div id="recTabla"><p class="desc">Buscando respaldos…</p></div>' +
+      '<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px;">' +
+        '<p style="font-size:12.8px;margin:0 0 8px;"><b>¿Tiene el archivo de respaldo?</b> Si guardó alguna vez ' +
+        '«Descargar mis datos (JSON)», ese archivo repone todo, incluidas las firmas ya tomadas.</p>' +
+        '<button class="btn btn-ghost btn-xs" id="recArchivo">📂 Cargar archivo JSON</button>' +
+      '</div>' +
+      '<div class="modal-actions"><button class="btn btn-ghost" data-act="cancel">Cerrar</button></div>' +
+    '</div>';
+  document.getElementById('modalRoot').appendChild(wrap);
+
+  wrap.addEventListener('click', function(e){
+    var act = e.target.getAttribute && e.target.getAttribute('data-act');
+    if (e.target === wrap || act === 'cancel') wrap.remove();
+  });
+
+  wrap.querySelector('#recArchivo').addEventListener('click', function(){
+    wrap.remove();
+    var inp = document.getElementById('fileImport');
+    if (inp) inp.click();
+    else toast('Pida al administrador que importe el archivo.', true);
+  });
+
+  function pintar(){
+    var cont = wrap.querySelector('#recTabla');
+    if (!fuentes.length){
+      cont.innerHTML = '<p class="desc">No hay ninguna copia disponible en este dispositivo ni en línea. ' +
+        'Habrá que volver a importar las nóminas desde los Excel de los clubes.</p>';
+      return;
+    }
+    cont.innerHTML = '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th>Copia</th><th class="c">Equipos</th><th class="c">Partidos</th><th class="c">Personas</th><th></th>' +
+      '</tr></thead><tbody>' + fuentes.map(filaFuente).join('') + '</tbody></table></div>';
+
+    cont.querySelectorAll('.rec-usar').forEach(function(b){
+      b.addEventListener('click', function(){
+        var f = fuentes.filter(function(x){ return x.clave === b.dataset.clave; })[0];
+        if (!f) return;
+        confirmModal({
+          title: 'Restaurar ' + f.titulo.toLowerCase(),
+          html: '<p>Se repondrán <b>' + f.peso.jugadores + ' personas inscritas</b>, ' + f.peso.equipos +
+            ' equipos y ' + f.peso.partidos + ' partidos, del ' + escapeHtml(f.cuando) + '.</p>' +
+            '<p>Queda guardado en línea para todos los dispositivos. ¿Continuar?</p>',
+          okText: 'Restaurar ahora', okClass: 'btn-primary',
+          onOk: function(){
+            guardarRespaldoPrevio().then(function(){
+              wrap.remove();
+              if (restaurarDesdeJson(f.json, f.titulo.toLowerCase())) scheduleSave();
+            });
+          }
+        });
+      });
+    });
+  }
+  pintar();
+
+  /* Los respaldos diarios se consultan en línea y se agregan al llegar. */
+  listarRespaldos().then(function(lista){
+    lista.forEach(function(r){
+      if (!r.peso.jugadores) return;   /* una copia vacía no sirve para recuperar */
+      fuentes.push({
+        clave: r.id, titulo: 'Respaldo en línea del ' + r.id.replace(/^(dia|previo)_/, ''),
+        cuando: r.ts ? (fmtDateEs(r.ts.slice(0, 10)) + ' a las ' + r.ts.slice(11, 16)) : r.id,
+        peso: r.peso, json: r.json
+      });
+    });
+    /* Primero la que traiga más personas inscritas. */
+    fuentes.sort(function(a, b){ return b.peso.jugadores - a.peso.jugadores; });
+    if (document.body.contains(wrap)) pintar();
+  });
 }
 
 function scheduleSave(){
@@ -2043,7 +2199,11 @@ function renderProgramacion(){
     '<div class="card">' +
       '<div class="card-head"><div><h3>Fase de grupos</h3>' +
       '<p class="desc" style="margin:2px 0 0;">Todos contra todos a una rueda, 5 fechas. Calendario vigente: dos partidos por día (21:00 y 22:00), de lunes a jueves, ordenado para maximizar el descanso entre partidos de cada club.</p></div>' +
-      (esAdmin() ? '<button class="btn btn-primary btn-xs" id="btnAddMatch">➕ Agregar partido</button>' : '') + '</div>' +
+      '<div class="row-flex">' +
+        (puedeEditarAlgo() ? '<button class="btn btn-gold btn-xs" id="btnImportActas">📥 Importar actas</button>' : '') +
+        '<button class="btn btn-ghost btn-xs" id="btnExportActas">⬇️ Guardar todas las actas</button>' +
+        (esAdmin() ? '<button class="btn btn-primary btn-xs" id="btnAddMatch">➕ Agregar partido</button>' : '') +
+      '</div></div>' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
       '<th>N°</th><th>Fecha</th><th>Grupo</th><th>Día</th><th>Hora</th><th>Local</th><th>GL</th><th></th><th>GV</th><th>Visita</th><th>Pen. L</th><th>Pen. V</th><th>Resultado</th><th>Planilla</th>' +
       '</tr></thead><tbody>' + grupos.map(fila).join('') + '</tbody></table></div>' +
@@ -2125,6 +2285,14 @@ function renderProgramacion(){
 
   var btnAdd = document.getElementById('btnAddMatch');
   if (btnAdd) btnAdd.addEventListener('click', abrirModalAgregarPartido);
+
+  var bIA = document.getElementById('btnImportActas');
+  if (bIA) bIA.addEventListener('click', function(){
+    var inp = document.getElementById('fileActas');
+    if (inp) inp.click();
+  });
+  var bEA = document.getElementById('btnExportActas');
+  if (bEA) bEA.addEventListener('click', descargarTodasLasActas);
 }
 RENDERERS.programacion = renderProgramacion;
 
@@ -2635,6 +2803,10 @@ function renderPlanillaBody(){
           (faltan ? faltan + ' por acreditar' : 'Todos acreditados') + '</span>' +
         '<span class="pill ' + estadoSyncFirmas().clase + '" id="syncFirmasPill" title="' + escapeHtml(estadoSyncFirmas().detalle) + '">' +
           estadoSyncFirmas().texto + '</span>' +
+        (puedeEditarAlgo() && firmasHuerfanas(p.id).length
+          ? '<button class="btn btn-gold btn-xs" id="btnFirmasHuer">🖋️ ' + firmasHuerfanas(p.id).length +
+            ' firmas por asignar</button>'
+          : (esAdmin() ? '<button class="btn btn-ghost btn-xs" id="btnFirmasHuer">🖋️ Recuperar firmas</button>' : '')) +
         (puedeEditarAlgo() ? '<button class="btn btn-ghost btn-xs" id="btnDiagSync">🔧 Probar sincronización</button>' : '') +
         '<button class="btn btn-ghost btn-xs" id="btnImprimirAcred">🖨️ Imprimir planilla</button>' +
       '</div>' +
@@ -2646,6 +2818,8 @@ function renderPlanillaBody(){
   if (btnAcred) btnAcred.addEventListener('click', function(){ imprimirAcreditacion(p.id); });
   var btnDiag = document.getElementById('btnDiagSync');
   if (btnDiag) btnDiag.addEventListener('click', diagnosticarSyncFirmas);
+  var btnFH = document.getElementById('btnFirmasHuer');
+  if (btnFH) btnFH.addEventListener('click', function(){ abrirPanelFirmas(p.id); });
   actualizarEstadoSync();
 
   /* El registro del partido (goles, faltas y tarjetas) va a continuación, en la
@@ -4311,6 +4485,18 @@ function cerrarPartido(matchId){
       renderAll();
       renderCurrentTab();
       toast('Partido cerrado. El resultado quedó guardado en Programación.');
+      /* Es el momento de llevarse el respaldo del acta: con ese archivo el
+         partido se puede reponer entero aunque después se pierdan los datos. */
+      setTimeout(function(){
+        confirmModal({
+          title: '✅ Partido N°' + p.numero + ' cerrado',
+          html: '<p>Guarde ahora el respaldo del acta. Es un archivo pequeño que contiene el marcador, la ' +
+            'nómina que jugó y todas las acciones: si algún día se pierden los datos, con él se repone este ' +
+            'partido completo desde <b>Programación y Resultados → Importar actas</b>.</p>',
+          okText: '💾 Guardar respaldo del acta', okClass: 'btn-gold', cancelText: 'Ahora no',
+          onOk: function(){ descargarActaDatos(matchId); }
+        });
+      }, 400);
     }
   });
 }
@@ -4532,6 +4718,7 @@ function tarjetaCierre(matchId, t){
       (cerrado && esAdmin()
         ? '<button class="btn btn-ghost btn-xs" id="btnReabrirPartido">🔓 Reabrir partido</button>' : '') +
       '<button class="btn btn-gold" id="btnActaDescargar">⬇️ Descargar acta (PDF)</button>' +
+      '<button class="btn btn-ghost" id="btnActaDatos">💾 Guardar acta (respaldo)</button>' +
       '<button class="btn btn-ghost" id="btnActaPdf">🖨️ Imprimir acta</button>' +
       '<button class="btn btn-ghost" id="btnVolverProg">← Volver a Programación</button>' +
     '</div>' +
@@ -4545,6 +4732,8 @@ function initCierreEventos(matchId){
   if (br) br.addEventListener('click', function(){ reabrirPartido(matchId); });
   var bd = document.getElementById('btnActaDescargar');
   if (bd) bd.addEventListener('click', function(){ descargarActaPdf(matchId); });
+  var bdd = document.getElementById('btnActaDatos');
+  if (bdd) bdd.addEventListener('click', function(){ descargarActaDatos(matchId); });
   var ba = document.getElementById('btnActaPdf');
   if (ba) ba.addEventListener('click', function(){ imprimirActa(matchId); });
   var bv = document.getElementById('btnVolverProg');
@@ -5029,6 +5218,407 @@ function renderActaBody(){
     logActivity('Sanciones del Acta enviadas', 'Partido N°' + p.numero + ' — ' + pendientes.length + ' registro(s)');
     renderAll();
     toast(pendientes.length + ' sanción(es) enviadas a Historial de Sanciones.');
+  });
+}
+
+
+/* ---- ui_actas_io.js ---- */
+
+/* ============================================================================
+   EXPORTAR E IMPORTAR ACTAS DE PARTIDO
+
+   El acta en PDF sirve para imprimir y firmar, pero no se puede volver a leer.
+   Por eso cada partido se puede guardar además como archivo de datos (.acta
+   .json): contiene el marcador, la nómina que jugó y todas las acciones, y se
+   puede volver a cargar para reponer un partido perdido.
+
+   Lo importante: el archivo guarda a cada persona con su NOMBRE, DORSAL y RUT,
+   no con su identificador interno. Así el acta se puede reponer aunque las
+   nóminas se hayan borrado y vuelto a cargar: si el jugador ya está, se
+   reconoce; si no está, se vuelve a crear en su club.
+   ========================================================================== */
+
+var ACTA_ARCHIVO_TIPO = 'acta-estrellas-de-barrio-2026';
+
+/* --- Exportar -------------------------------------------------------------- */
+function actaAArchivo(matchId){
+  var p = getPartido(STATE, matchId);
+  if (!p) return null;
+  var t = matchRowTeams(p);
+  var acta = (STATE.actas || {})[matchId] || {};
+  var planilla = (STATE.planillas || {})[matchId] || {};
+  var firmas = firmasDe(matchId);
+  var m = marcadorDesdeActa(STATE, matchId);
+
+  function ficha(lado, jid){
+    var j = getJugador(STATE, jid);
+    if (!j) return null;
+    var reg = (planilla[lado] || {})[jid] || {};
+    return {
+      lado: lado,
+      nombre: j.nombre,
+      dorsal: reg.dorsal || j.dorsal || 0,
+      rut: j.rut || '',
+      fechaNac: j.fechaNac || '',
+      nacionalidad: j.nacionalidad || '',
+      cargo: j.cargo || 'Jugador'
+    };
+  }
+
+  var nomina = [];
+  ['local','visita'].forEach(function(lado){
+    Object.keys(planilla[lado] || {}).forEach(function(jid){
+      var f = ficha(lado, jid);
+      if (!f) return;
+      f.asiste = !!planilla[lado][jid].asiste;
+      f.firmo = !!firmas[jid];
+      if (firmas[jid]) f.firmaTs = firmas[jid].ts || '';
+      nomina.push(f);
+    });
+  });
+
+  var acciones = (acta.acciones || []).map(function(a){
+    var j = getJugador(STATE, a.playerId);
+    var reg = (planilla[a.lado] || {})[a.playerId] || {};
+    var o = {
+      lado: a.lado, tipo: a.tipo, minuto: a.minuto,
+      nombre: j ? j.nombre : '', dorsal: reg.dorsal || (j ? j.dorsal : 0), rut: j ? (j.rut || '') : '',
+      causal: a.causal || '', detalle: a.detalle || '',
+      partidos: a.partidos || 0, multa: a.multa || 0,
+      enviadaSanciones: !!a.enviadaSanciones
+    };
+    if (a.tipo === 'sustitucion'){
+      var je = getJugador(STATE, a.playerEntra);
+      var rege = (planilla[a.lado] || {})[a.playerEntra] || {};
+      o.entra = { nombre: je ? je.nombre : '', dorsal: rege.dorsal || (je ? je.dorsal : 0),
+                  rut: je ? (je.rut || '') : '' };
+      o.entretiempo = !!a.entretiempo;
+    }
+    return o;
+  });
+
+  return {
+    tipo: ACTA_ARCHIVO_TIPO,
+    version: 1,
+    generado: new Date().toISOString(),
+    partido: { numero: p.numero, jornada: p.jornada, grupo: p.grupo || '', dia: p.dia || '', hora: p.hora || '' },
+    local:  { nombre: t.localNombre,  goles: m.local },
+    visita: { nombre: t.visitaNombre, goles: m.visita },
+    incidencias: acta.incidencias || '',
+    cerrado: !!acta.cerrado, cerradoEn: acta.cerradoEn || '', cerradoPor: acta.cerradoPor || '',
+    nomina: nomina,
+    acciones: acciones
+  };
+}
+
+function descargarActaDatos(matchId){
+  var d = actaAArchivo(matchId);
+  if (!d){ toast('No se encontró el partido.', true); return; }
+  var nombre = 'acta_partido_' + d.partido.numero + '_' +
+    nombreArchivoSeguro(d.local.nombre) + '_vs_' + nombreArchivoSeguro(d.visita.nombre) + '.json';
+  var blob = new Blob([JSON.stringify(d, null, 1)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nombre;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  toast('Acta guardada como archivo de datos: ' + nombre);
+}
+
+/* Todas las actas con algo registrado, en un solo archivo. */
+function descargarTodasLasActas(){
+  var lista = STATE.partidos.filter(function(p){
+    var a = (STATE.actas || {})[p.id];
+    return a && (a.acciones || []).length;
+  }).map(function(p){ return actaAArchivo(p.id); }).filter(Boolean);
+
+  if (!lista.length){ toast('Todavía no hay actas con acciones registradas.', true); return; }
+
+  var paquete = { tipo: ACTA_ARCHIVO_TIPO, version: 1, generado: new Date().toISOString(), actas: lista };
+  var blob = new Blob([JSON.stringify(paquete, null, 1)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'actas_estrellas_de_barrio_' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast(lista.length + ' acta(s) guardadas en un archivo.');
+}
+
+/* --- Importar -------------------------------------------------------------- */
+/* Busca a la persona en el club; si no está, la vuelve a crear con los datos
+   que trae el acta. Primero por RUT (es único), después por nombre. */
+function resolverPersona(teamId, ficha, creadas){
+  var delClub = STATE.jugadores.filter(function(j){ return j.teamId === teamId; });
+  var rut = (ficha.rut || '').replace(/[.\s]/g, '').toLowerCase();
+  if (rut){
+    var porRut = delClub.filter(function(j){
+      return (j.rut || '').replace(/[.\s]/g, '').toLowerCase() === rut;
+    })[0];
+    if (porRut) return porRut;
+  }
+  var nom = normTexto(ficha.nombre || '');
+  if (nom){
+    var porNombre = delClub.filter(function(j){ return normTexto(j.nombre) === nom; })[0];
+    if (porNombre) return porNombre;
+  }
+  if (!ficha.nombre) return null;
+  var nuevo = {
+    id: uid('pl'), teamId: teamId, dorsal: ficha.dorsal || 0,
+    nombre: nombrePropio(ficha.nombre), cargo: ficha.cargo || 'Jugador',
+    rut: ficha.rut || '', nacionalidad: ficha.nacionalidad || '', fechaNac: ficha.fechaNac || '',
+    estado: 'Activo'
+  };
+  STATE.jugadores.push(nuevo);
+  if (creadas) creadas.push(nuevo.nombre);
+  return nuevo;
+}
+
+/* Revisa un acta antes de tocar nada y devuelve qué se va a hacer. */
+function revisarActa(d){
+  if (!d || d.tipo !== ACTA_ARCHIVO_TIPO) return { error: 'El archivo no es un acta de esta plataforma.' };
+  var num = d.partido && d.partido.numero;
+  var p = STATE.partidos.filter(function(x){ return x.numero === num; })[0];
+  if (!p) return { error: 'El acta es del partido N°' + num + ', que no existe en la programación.' };
+  var t = matchRowTeams(p);
+  if (!t.localId || !t.visitaId) return { error: 'El partido N°' + num + ' todavía no tiene equipos definidos.' };
+
+  var avisos = [];
+  if (normTexto(t.localNombre) !== normTexto(d.local.nombre) ||
+      normTexto(t.visitaNombre) !== normTexto(d.visita.nombre)){
+    avisos.push('El acta dice «' + d.local.nombre + ' vs ' + d.visita.nombre + '» y en la programación el N°' +
+      num + ' es «' + t.localNombre + ' vs ' + t.visitaNombre + '». Se cargará igual sobre el N°' + num + '.');
+  }
+  var actaActual = (STATE.actas || {})[p.id];
+  if (actaActual && (actaActual.acciones || []).length){
+    avisos.push('Este partido ya tiene ' + actaActual.acciones.length + ' acción(es) registradas: se reemplazan ' +
+      'por las del archivo.');
+  }
+  var enNomina = 0, faltan = 0;
+  (d.nomina || []).forEach(function(f){
+    var teamId = f.lado === 'visita' ? t.visitaId : t.localId;
+    var rut = (f.rut || '').replace(/[.\s]/g, '').toLowerCase();
+    var nom = normTexto(f.nombre || '');
+    var hay = STATE.jugadores.some(function(j){
+      if (j.teamId !== teamId) return false;
+      if (rut && (j.rut || '').replace(/[.\s]/g, '').toLowerCase() === rut) return true;
+      return nom && normTexto(j.nombre) === nom;
+    });
+    if (hay) enNomina++; else faltan++;
+  });
+
+  return { partido: p, equipos: t, datos: d, enNomina: enNomina, faltan: faltan, avisos: avisos };
+}
+
+/* Aplica el acta: nómina, asistencia, dorsales, acciones y marcador. */
+function aplicarActa(rev, opciones){
+  opciones = opciones || {};
+  var p = rev.partido, t = rev.equipos, d = rev.datos;
+  var creadas = [];
+
+  var planilla = ensurePlanilla(p.id);
+  planilla.local = {}; planilla.visita = {};
+
+  /* Índice nombre|rut -> jugador, para amarrar las acciones después. */
+  var porClave = {};
+  function clave(lado, f){
+    return lado + '|' + (f.rut || '').replace(/[.\s]/g, '').toLowerCase() + '|' + normTexto(f.nombre || '');
+  }
+
+  (d.nomina || []).forEach(function(f){
+    var lado = f.lado === 'visita' ? 'visita' : 'local';
+    var teamId = lado === 'visita' ? t.visitaId : t.localId;
+    var j = resolverPersona(teamId, f, creadas);
+    if (!j) return;
+    porClave[clave(lado, f)] = j;
+    if (f.dorsal && !j.dorsal) j.dorsal = f.dorsal;
+    planilla[lado][j.id] = { asiste: f.asiste !== false, dorsal: f.dorsal || j.dorsal || 0 };
+  });
+
+  function buscar(lado, f){
+    if (!f || !f.nombre) return null;
+    var j = porClave[clave(lado, f)];
+    if (j) return j;
+    var teamId = lado === 'visita' ? t.visitaId : t.localId;
+    j = resolverPersona(teamId, f, creadas);
+    if (j){
+      porClave[clave(lado, f)] = j;
+      if (!planilla[lado][j.id]) planilla[lado][j.id] = { asiste: true, dorsal: f.dorsal || j.dorsal || 0 };
+    }
+    return j;
+  }
+
+  var acta = ensureActa(p.id);
+  acta.acciones = [];
+  var sinJugador = 0;
+
+  (d.acciones || []).forEach(function(a){
+    var lado = a.lado === 'visita' ? 'visita' : 'local';
+    var j = buscar(lado, a);
+    if (!j){ sinJugador++; return; }
+    var nueva = {
+      id: uid('a'), lado: lado, playerId: j.id, tipo: a.tipo,
+      minuto: (a.minuto === null || a.minuto === '') ? null : Number(a.minuto),
+      causal: a.causal || '', detalle: a.detalle || '',
+      partidos: Number(a.partidos) || 0, multa: Number(a.multa) || 0,
+      enviadaSanciones: !!a.enviadaSanciones
+    };
+    if (a.tipo === 'sustitucion'){
+      var je = buscar(lado, a.entra);
+      if (!je){ sinJugador++; return; }
+      nueva.playerEntra = je.id;
+      nueva.entretiempo = !!a.entretiempo;
+    }
+    acta.acciones.push(nueva);
+  });
+
+  if (d.incidencias) acta.incidencias = d.incidencias;
+  if (d.cerrado){
+    acta.cerrado = true;
+    acta.cerradoEn = d.cerradoEn || new Date().toISOString();
+    acta.cerradoPor = d.cerradoPor || 'Repuesto desde archivo';
+  }
+
+  /* El marcador se recalcula desde las acciones; si el acta no traía goles
+     registrados uno por uno, se respeta el resultado que venía escrito. */
+  if (opciones.aplicarResultado !== false){
+    var m = marcadorDesdeActa(STATE, p.id);
+    var hayGoles = acta.acciones.some(function(a){ return a.tipo === 'gol' || a.tipo === 'autogol'; });
+    p.golesLocal  = hayGoles ? m.local  : (d.local.goles  === null ? null : Number(d.local.goles));
+    p.golesVisita = hayGoles ? m.visita : (d.visita.goles === null ? null : Number(d.visita.goles));
+    acta.resultadoAplicado = true;
+  }
+
+  if (opciones.reponerSanciones){
+    reponerSancionesDeActa(p, acta);
+  }
+
+  logActivity('Acta importada', 'Partido N°' + p.numero + ' — ' + acta.acciones.length + ' acción(es)' +
+    (creadas.length ? ', ' + creadas.length + ' persona(s) repuesta(s) en la nómina' : ''));
+
+  return { acciones: acta.acciones.length, creadas: creadas, sinJugador: sinJugador, partido: p };
+}
+
+/* Vuelve a dejar en el Historial de Sanciones las que traía el acta. */
+function reponerSancionesDeActa(p, acta){
+  var candidatas = acta.acciones.filter(function(a){
+    if (a.tipo === 'sustitucion') return false;
+    return a.tipo === 'roja' || (a.partidos || 0) > 0 || (a.multa || 0) > 0;
+  });
+  candidatas.forEach(function(a){
+    var j = getJugador(STATE, a.playerId);
+    var persona = j ? ('#' + j.dorsal + ' ' + j.nombre) : '—';
+    /* No se duplica si ya existe la misma sanción de ese partido. */
+    var yaEsta = (STATE.sanciones || []).some(function(s){
+      return s.origenActa && s.jornada === p.jornada && s.persona === persona &&
+             (s.detalle || '') === (a.detalle || '');
+    });
+    if (yaEsta) return;
+    STATE.sanciones.push({
+      id: uid('sanc'), fecha: p.dia, teamId: j ? j.teamId : null,
+      persona: persona, cargo: 'Jugador',
+      causal: a.causal || 'Tarjetas y disciplina en cancha',
+      detalle: a.detalle || 'Expulsión registrada en Acta — definir causal exacta',
+      multa: a.multa || 0,
+      partidos: (a.partidos || 0) > 0 ? a.partidos : (a.tipo === 'roja' ? 1 : 0),
+      pagada: 'No',
+      observaciones: 'Repuesta al importar el acta del partido N°' + p.numero,
+      origenActa: true, jornada: p.jornada
+    });
+    a.enviadaSanciones = true;
+  });
+}
+
+/* --- Cuadro de importación ------------------------------------------------- */
+var COLA_ACTAS = [];
+
+function siguienteActa(){
+  if (!COLA_ACTAS.length) return;
+  var f = COLA_ACTAS.shift();
+  leerArchivoActa(f, COLA_ACTAS.length);
+}
+
+function leerArchivoActa(file, pendientes){
+  var lector = new FileReader();
+  lector.onload = function(ev){
+    var d;
+    try { d = JSON.parse(ev.target.result); }
+    catch (e){
+      alertModal('No se pudo leer «' + file.name + '»',
+        '<p>El archivo no es un JSON válido.</p>', siguienteActa);
+      return;
+    }
+    /* Un archivo puede traer varias actas juntas. */
+    if (d && d.actas && d.actas.length){
+      COLA_ACTAS = d.actas.map(function(x){ return { __acta: x, name: file.name }; }).concat(COLA_ACTAS);
+      siguienteActa();
+      return;
+    }
+    mostrarModalActa(d, file.name, pendientes);
+  };
+  if (file.__acta){ mostrarModalActa(file.__acta, file.name, pendientes); return; }
+  lector.readAsText(file);
+}
+
+function mostrarModalActa(d, nombreArchivo, pendientes){
+  var rev = revisarActa(d);
+  if (rev.error){
+    alertModal('Acta no válida', '<p>' + escapeHtml(rev.error) + '</p>', siguienteActa);
+    return;
+  }
+  var p = rev.partido, t = rev.equipos;
+  var resumen = {};
+  (d.acciones || []).forEach(function(a){ resumen[a.tipo] = (resumen[a.tipo] || 0) + 1; });
+  var detalleTipos = Object.keys(resumen).map(function(k){
+    return (TIPO_LABELS[k] || k) + ': ' + resumen[k];
+  }).join(' · ') || 'sin acciones';
+
+  var body =
+    '<p style="font-size:13px;margin:0 0 10px;"><b>Partido N°' + p.numero + '</b> · ' + escapeHtml(p.jornada) +
+      ' · ' + (p.dia ? fmtDateEs(p.dia) : '') + '<br>' +
+      escapeHtml(t.localNombre) + ' <b>' + d.local.goles + ' — ' + d.visita.goles + '</b> ' +
+      escapeHtml(t.visitaNombre) + '</p>' +
+    '<div class="summary-grid" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
+      '<span class="pill pill-muted">' + (d.acciones || []).length + ' acciones</span>' +
+      '<span class="pill pill-muted">' + (d.nomina || []).length + ' personas en la planilla</span>' +
+      '<span class="pill ' + (rev.faltan ? 'pill-gold' : 'pill-green') + '">' + rev.enNomina + ' ya en la nómina' +
+        (rev.faltan ? ' · ' + rev.faltan + ' se repondrán' : '') + '</span>' +
+    '</div>' +
+    '<p class="desc" style="margin:0 0 10px;">' + escapeHtml(detalleTipos) + '</p>' +
+    (rev.avisos.length
+      ? '<div style="background:var(--gold-soft);border:1px solid var(--gold);border-radius:10px;padding:9px 11px;' +
+        'font-size:12.3px;margin-bottom:10px;">' + rev.avisos.map(escapeHtml).join('<br>') + '</div>' : '') +
+    '<div class="field"><label style="display:flex;align-items:center;gap:7px;font-size:12.8px;">' +
+      '<input type="checkbox" name="resultado" checked> Aplicar el marcador a Programación y Resultados</label></div>' +
+    '<div class="field"><label style="display:flex;align-items:center;gap:7px;font-size:12.8px;">' +
+      '<input type="checkbox" name="sanciones"> Reponer también las sanciones en el Historial de Sanciones</label></div>';
+
+  formModal({
+    title: 'Importar acta del partido N°' + p.numero +
+      (pendientes ? ' (quedan ' + pendientes + ')' : ''),
+    okText: pendientes ? 'Importar y seguir' : 'Importar acta',
+    width: 600,
+    bodyHtml: body,
+    onCancel: siguienteActa,
+    onOk: function(form){
+      var r = aplicarActa(rev, {
+        aplicarResultado: form.resultado.checked,
+        reponerSanciones: form.sanciones.checked
+      });
+      renderAll();
+      var msg = 'Acta del partido N°' + r.partido.numero + ' repuesta: ' + r.acciones + ' acción(es)';
+      if (r.creadas.length) msg += ', ' + r.creadas.length + ' persona(s) devueltas a la nómina';
+      if (r.sinJugador) msg += '. ' + r.sinJugador + ' acción(es) no se pudieron amarrar a un jugador';
+      toast(msg);
+      setTimeout(siguienteActa, 140);
+    }
+  });
+}
+
+function initImportarActas(){
+  var input = document.getElementById('fileActas');
+  if (input) input.addEventListener('change', function(){
+    COLA_ACTAS = Array.prototype.slice.call(input.files || []);
+    input.value = '';
+    siguienteActa();
   });
 }
 
@@ -6453,6 +7043,226 @@ function imprimirAcreditacion(matchId){
   window.print();
 }
 
+/* ---- ui_firmas_rescate.js ---- */
+
+/* ============================================================================
+   REASIGNAR FIRMAS RECUPERADAS
+
+   Cada firma se guarda amarrada al identificador interno del jugador. Si las
+   nóminas se pierden y se vuelven a cargar, los jugadores reciben
+   identificadores nuevos y esas firmas quedan huérfanas: siguen guardadas,
+   pero sin dueño.
+
+   Este panel las muestra tal como se firmaron, en el orden en que se tomaron,
+   con la hora y quién las recibió, y permite asignarle cada una a la persona
+   que corresponde. Es trabajo manual a propósito: nadie puede adivinar de quién
+   es una firma, y el acta de un partido no admite suposiciones.
+   ========================================================================== */
+
+function firmasHuerfanas(matchId){
+  var f = firmasDe(matchId);
+  return Object.keys(f)
+    .filter(function(id){ return !getJugador(STATE, id); })
+    .map(function(id){ return { id: id, dato: f[id] || {} }; })
+    .sort(function(a, b){ return (a.dato.ts || '') < (b.dato.ts || '') ? -1 : 1; });
+}
+
+/* Mueve una firma del identificador viejo al del jugador elegido. */
+function reasignarFirma(matchId, idViejo, idNuevo){
+  var f = firmasDe(matchId);
+  if (!f[idViejo]) return false;
+  f[idNuevo] = f[idViejo];
+  delete f[idViejo];
+  guardarFirma(matchId, idNuevo);
+  borrarFirmaRemota(matchId, idViejo);
+  var j = getJugador(STATE, idNuevo);
+  var p = getPartido(STATE, matchId);
+  logActivity('Firma recuperada y asignada',
+    (j ? j.nombre : '—') + ' — Partido N°' + (p ? p.numero : '?'));
+  return true;
+}
+
+function descartarFirmaHuerfana(matchId, idViejo){
+  var f = firmasDe(matchId);
+  delete f[idViejo];
+  borrarFirmaRemota(matchId, idViejo);
+}
+
+/* Carga un archivo de firmas descargado desde la página de rescate y lo deja
+   disponible para asignar en el partido elegido. Acepta las tres formas en que
+   puede venir el archivo. */
+function cargarArchivoFirmas(file, matchId, alTerminar){
+  var lector = new FileReader();
+  lector.onload = function(ev){
+    var d;
+    try { d = JSON.parse(ev.target.result); }
+    catch (e){ alertModal('Archivo no válido', '<p>El archivo no es un JSON válido.</p>'); return; }
+
+    /* Forma 1: { "<idPartido>": { firmas: {...} } } — lo que baja el rescate. */
+    var mapa = null;
+    if (d && d[matchId] && d[matchId].firmas) mapa = d[matchId].firmas;
+    /* Forma 2: { firmas: {...} } — un solo partido. */
+    else if (d && d.firmas) mapa = d.firmas;
+    /* Forma 3: el archivo trae varios partidos y ninguno es este: se toma el
+       que tenga más firmas, avisando. */
+    else if (d && typeof d === 'object'){
+      var candidatos = Object.keys(d).filter(function(k){ return d[k] && d[k].firmas; });
+      if (candidatos.length){
+        candidatos.sort(function(a, b){
+          return Object.keys(d[b].firmas).length - Object.keys(d[a].firmas).length;
+        });
+        mapa = d[candidatos[0]].firmas;
+      } else {
+        /* Forma 4: plano { "<idJugador>": {img, ts, autor} } */
+        var plano = Object.keys(d).filter(function(k){ return d[k] && d[k].img; });
+        if (plano.length){ mapa = d; }
+      }
+    }
+
+    if (!mapa || !Object.keys(mapa).length){
+      alertModal('Sin firmas', '<p>El archivo no trae ninguna firma que se pueda cargar.</p>');
+      return;
+    }
+
+    var f = firmasDe(matchId);
+    var nuevas = 0;
+    Object.keys(mapa).forEach(function(id){
+      if (!mapa[id] || !mapa[id].img) return;
+      if (f[id]) return;          /* ya está: no se pisa */
+      f[id] = mapa[id];
+      nuevas++;
+    });
+    guardarFirmasLocal(matchId);
+    toast(nuevas + ' firma(s) cargadas. Asígnelas a cada jugador.');
+    if (alTerminar) alTerminar();
+  };
+  lector.readAsText(file);
+}
+
+function abrirPanelFirmas(matchId){
+  var p = getPartido(STATE, matchId);
+  if (!p) return;
+  var wrap = document.createElement('div');
+  wrap.className = 'modal-overlay';
+  wrap.innerHTML =
+    '<div class="modal" style="max-width:700px;">' +
+      '<h3>🖋️ Firmas recuperadas — Partido N°' + p.numero + '</h3>' +
+      '<p style="font-size:12.8px;color:var(--muted);line-height:1.55;margin:0 0 6px;">' +
+        'Estas firmas se tomaron de verdad en la cancha, pero quedaron sin dueño al reponerse las nóminas. ' +
+        'Van en el orden en que se firmaron, con la hora de cada una: eso suele coincidir con el orden en que ' +
+        'los jugadores se fueron acreditando. Asigne cada una a quien corresponda.</p>' +
+      '<div id="firmasHuerBody"></div>' +
+      '<div class="modal-actions">' +
+        '<button class="btn btn-ghost btn-xs" data-act="archivo">📂 Cargar archivo de firmas</button>' +
+        '<button class="btn btn-ghost" data-act="cancel">Cerrar</button>' +
+      '</div>' +
+    '</div>';
+  document.getElementById('modalRoot').appendChild(wrap);
+
+  wrap.addEventListener('click', function(e){
+    var act = e.target.getAttribute && e.target.getAttribute('data-act');
+    if (e.target === wrap || act === 'cancel'){
+      wrap.remove();
+      /* Se redibuja la planilla entera: cambian las dos columnas y también el
+         contador de firmas por asignar del encabezado. */
+      if (PLANILLA_SELECTED_MATCH === matchId) renderPlanillaBody();
+      return;
+    }
+    if (act === 'archivo'){
+      var inp = document.getElementById('fileFirmas');
+      if (!inp) return;
+      inp.onchange = function(){
+        var f = inp.files && inp.files[0];
+        inp.value = '';
+        if (f) cargarArchivoFirmas(f, matchId, pintar);
+      };
+      inp.click();
+    }
+  });
+
+  function pintar(){
+    var cont = wrap.querySelector('#firmasHuerBody');
+    var huer = firmasHuerfanas(matchId);
+    if (!huer.length){
+      cont.innerHTML = '<p class="desc">No quedan firmas sin asignar en este partido. Si tiene el archivo de ' +
+        'respaldo de firmas, cárguelo con el botón de abajo.</p>';
+      return;
+    }
+    var t = matchRowTeams(p);
+    var planilla = ensurePlanilla(matchId);
+    var f = firmasDe(matchId);
+
+    /* Candidatos: quienes están en la planilla de este partido y todavía no
+       tienen firma propia. */
+    var opciones = '';
+    [['local', t.localId, t.localNombre], ['visita', t.visitaId, t.visitaNombre]].forEach(function(e){
+      var libres = STATE.jugadores.filter(function(j){
+        return j.teamId === e[1] && !f[j.id];
+      }).sort(function(a, b){
+        var da = ((planilla[e[0]] || {})[a.id] || {}).dorsal || a.dorsal || 999;
+        var db = ((planilla[e[0]] || {})[b.id] || {}).dorsal || b.dorsal || 999;
+        return da - db;
+      });
+      if (!libres.length) return;
+      opciones += '<optgroup label="' + escapeHtml(e[2]) + '">' + libres.map(function(j){
+        var d = ((planilla[e[0]] || {})[j.id] || {}).dorsal || j.dorsal || '';
+        return '<option value="' + j.id + '">' + (d ? '#' + d + ' ' : '') + escapeHtml(j.nombre) + '</option>';
+      }).join('') + '</optgroup>';
+    });
+
+    if (!opciones){
+      cont.innerHTML = '<p class="desc">Hay ' + huer.length + ' firma(s) sin asignar, pero todas las personas ' +
+        'de este partido ya tienen la suya. Cargue primero la nómina del partido.</p>';
+      return;
+    }
+
+    cont.innerHTML = '<p style="font-size:12.5px;margin:0 0 8px;"><b>' + huer.length + '</b> firma(s) por asignar.</p>' +
+      '<div class="tbl-wrap" style="max-height:340px;overflow:auto;"><table class="tbl"><thead><tr>' +
+      '<th style="width:44px;">N°</th><th style="width:70px;">Hora</th><th style="width:150px;">Firma</th>' +
+      '<th>Asignar a</th><th></th></tr></thead><tbody>' +
+      huer.map(function(h, i){
+        return '<tr data-vieja="' + escapeHtml(h.id) + '">' +
+          '<td class="c">' + (i + 1) + '</td>' +
+          '<td class="c">' + escapeHtml((h.dato.ts || '').slice(11, 16)) + '</td>' +
+          '<td><img src="' + (h.dato.img || '') + '" alt="firma" ' +
+            'style="width:140px;height:46px;object-fit:contain;background:#fff;border:1px solid var(--line);' +
+            'border-radius:6px;"></td>' +
+          '<td><select class="fh-sel" style="width:100%;min-width:190px;">' +
+            '<option value="">— elija —</option>' + opciones + '</select></td>' +
+          '<td style="white-space:nowrap;">' +
+            '<button class="btn btn-primary btn-xs fh-ok">Asignar</button> ' +
+            '<button class="btn btn-ghost btn-xs fh-no" title="Descartar esta firma">🗑️</button>' +
+          '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+
+    cont.querySelectorAll('.fh-ok').forEach(function(b){
+      b.addEventListener('click', function(){
+        var tr = b.closest('tr');
+        var sel = tr.querySelector('.fh-sel');
+        if (!sel.value){ toast('Elija a quién corresponde la firma.', true); return; }
+        if (reasignarFirma(matchId, tr.dataset.vieja, sel.value)){
+          toast('Firma asignada.');
+          pintar();
+        }
+      });
+    });
+    cont.querySelectorAll('.fh-no').forEach(function(b){
+      b.addEventListener('click', function(){
+        var tr = b.closest('tr');
+        confirmModal({
+          title: 'Descartar firma',
+          html: '<p>Se elimina esta firma definitivamente. Úselo solo si está seguro de que no corresponde a ' +
+            'ningún jugador de este partido.</p>',
+          okText: 'Descartar', okClass: 'btn-danger',
+          onOk: function(){ descartarFirmaHuerfana(matchId, tr.dataset.vieja); pintar(); }
+        });
+      });
+    });
+  }
+  pintar();
+}
+
+
 /* ---- ui_historial_club.js ---- */
 /* ============================================================================
    TAB: HISTORIAL POR CLUB
@@ -7265,11 +8075,13 @@ function aplicarPermisosUI(){
     b.classList.toggle('hidden', !ok);
   });
   var btnImp = document.getElementById('btnImport');
-  if (btnImp) btnImp.classList.toggle('hidden', !esAdmin());
+  /* Con la base vacía, la mesa también necesita poder cargar el respaldo. */
+  if (btnImp) btnImp.classList.toggle('hidden', !(esAdmin() || (faltanDatos() && puedeEditarAlgo())));
   var btnExp = document.getElementById('btnExport');
   if (btnExp) btnExp.classList.toggle('hidden', !puedeEditarAlgo());
 
   if (permitidas.indexOf(CURRENT_TAB) === -1) switchTab(permitidas[0] || 'equipos');
+  refrescarBotonRecuperar();
   renderUserChip();
 }
 
@@ -7584,6 +8396,9 @@ document.addEventListener('DOMContentLoaded', async function(){
   if (elVerLogin) elVerLogin.textContent = 'Versión ' + APP_VERSION;
   initImportarNomina();
   initImportarCausales();
+  initImportarActas();
+  var btnRec = document.getElementById('btnRecuperar');
+  if (btnRec) btnRec.addEventListener('click', abrirPanelRecuperacion);
   setSaveStatus('sinLinea');
   mostrarLogin('');  // la plataforma queda bloqueada hasta que alguien ingrese
 
