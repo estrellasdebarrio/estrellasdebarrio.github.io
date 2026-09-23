@@ -467,6 +467,11 @@
       font-size:8px; text-transform:uppercase; letter-spacing:.2px; }
     #printArea .acta table.ac-tb td{ border:1px solid #000; padding:3px 5px; }
     #printArea .acta table.ac-tb .c{ text-align:center; }
+    #printArea .acta table.ac-nom td{ height:22px; }
+    #printArea .acta table.ac-nom .fi{ padding:0 2px; }
+    #printArea .acta table.ac-nom .fi img{ height:20px; width:auto; max-width:100%; display:block; margin:0 auto; }
+    #printArea .acta table.ac-nom .b{ font-weight:bold; }
+    #printArea .acta .ac-pie-nom{ font-size:7.5px; color:#333; margin:2px 0 4px; }
     #printArea .acta .ac-incid{ font-size:9px; border:1px solid #000; padding:6px 8px; line-height:1.45;
       white-space:pre-wrap; min-height:38px; }
     #printArea .acta .ac-cierre{ font-size:8.5px; margin-top:10px; font-style:italic; }
@@ -889,7 +894,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.23-7';
+var APP_VERSION = 'v2026.09.23-8';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -4060,9 +4065,56 @@ function PdfDoc(opciones){
   this.w = opciones.ancho || 612;      /* carta */
   this.h = opciones.alto  || 792;
   this.paginas = [];
+  this.imagenes = [];                  /* firmas y escudos incrustados */
   this.buf = '';
   this.nuevaPagina();
 }
+
+/* Lee el ancho, el alto y el número de componentes de un JPEG, que es lo que
+   el PDF necesita para incrustarlo sin recomprimirlo. */
+function jpegInfo(bin){
+  var i = 2;
+  while (i < bin.length - 9){
+    if (bin.charCodeAt(i) !== 0xFF){ i++; continue; }
+    var m = bin.charCodeAt(i + 1);
+    if (m === 0xD8 || m === 0x01 || (m >= 0xD0 && m <= 0xD7)){ i += 2; continue; }
+    var len = (bin.charCodeAt(i + 2) << 8) | bin.charCodeAt(i + 3);
+    var esSOF = (m >= 0xC0 && m <= 0xCF) && m !== 0xC4 && m !== 0xC8 && m !== 0xCC;
+    if (esSOF){
+      return {
+        h: (bin.charCodeAt(i + 5) << 8) | bin.charCodeAt(i + 6),
+        w: (bin.charCodeAt(i + 7) << 8) | bin.charCodeAt(i + 8),
+        comps: bin.charCodeAt(i + 9)
+      };
+    }
+    if (len <= 0) break;
+    i += 2 + len;
+  }
+  return null;
+}
+
+/* Dibuja una imagen (data:image/jpeg;base64,…) ajustada dentro del recuadro
+   indicado, conservando su proporción. */
+PdfDoc.prototype.imagen = function(x, y, ancho, alto, dataUrl){
+  if (!dataUrl || dataUrl.indexOf('base64,') === -1) return this;
+  var bin;
+  try { bin = atob(dataUrl.split('base64,')[1]); } catch (e) { return this; }
+  if (bin.charCodeAt(0) !== 0xFF || bin.charCodeAt(1) !== 0xD8) return this;   /* solo JPEG */
+  var info = jpegInfo(bin);
+  if (!info || !info.w || !info.h) return this;
+
+  var idx = this.imagenes.length;
+  this.imagenes.push({ bin: bin, w: info.w, h: info.h, comps: info.comps });
+
+  /* Se encaja dentro del recuadro sin deformarla. */
+  var esc = Math.min(ancho / info.w, alto / info.h);
+  var dw = info.w * esc, dh = info.h * esc;
+  var dx = x + (ancho - dw) / 2, dy = y + (alto - dh) / 2;
+
+  this.buf += 'q ' + dw.toFixed(2) + ' 0 0 ' + dh.toFixed(2) + ' ' +
+    dx.toFixed(2) + ' ' + this._y(dy + dh).toFixed(2) + ' cm /Im' + idx + ' Do Q\n';
+  return this;
+};
 PdfDoc.prototype.nuevaPagina = function(){
   if (this.buf) this.paginas.push(this.buf);
   this.buf = '';
@@ -4128,11 +4180,25 @@ PdfDoc.prototype.bytes = function(){
   objetos[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
 
   var self = this;
+  var idImagen0 = 5 + nPag * 2;
+  var recursosImg = this.imagenes.length
+    ? ' /XObject << ' + this.imagenes.map(function(im, k){
+        return '/Im' + k + ' ' + (idImagen0 + k) + ' 0 R';
+      }).join(' ') + ' >>'
+    : '';
+
   paginas.forEach(function(contenido, i){
     var idP = 5 + i * 2, idC = idP + 1;
     objetos[idP] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + self.w + ' ' + self.h + '] ' +
-      '/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' + idC + ' 0 R >>';
+      '/Resources << /Font << /F1 3 0 R /F2 4 0 R >>' + recursosImg + ' >> /Contents ' + idC + ' 0 R >>';
     objetos[idC] = '<< /Length ' + contenido.length + ' >>\nstream\n' + contenido + 'endstream';
+  });
+
+  this.imagenes.forEach(function(im, k){
+    objetos[idImagen0 + k] = '<< /Type /XObject /Subtype /Image /Width ' + im.w + ' /Height ' + im.h +
+      ' /ColorSpace /' + (im.comps === 1 ? 'DeviceGray' : 'DeviceRGB') +
+      ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' + im.bin.length + ' >>\nstream\n' +
+      im.bin + '\nendstream';
   });
 
   var salida = '%PDF-1.4\n';
@@ -4245,10 +4311,33 @@ function datosActa(matchId){
     };
   }
 
+  /* Quiénes asistieron y quiénes firmaron, por equipo: el acta y la planilla
+     de acreditación quedan así en un solo documento. */
+  var firmas = firmasDe(matchId);
+  function nominaDe(lado, teamId){
+    var reg = planilla[lado] || {};
+    return Object.keys(reg).filter(function(jid){
+      var j = getJugador(STATE, jid);
+      return reg[jid] && reg[jid].asiste && j && j.teamId === teamId;
+    }).map(function(jid){
+      var j = getJugador(STATE, jid);
+      var f = firmas[jid];
+      return {
+        dorsal: reg[jid].dorsal || j.dorsal || 0,
+        nombre: j.nombre, rut: j.rut || '', cargo: j.cargo || 'Jugador',
+        firma: f ? (f.img || '') : '', hora: f ? (f.ts || '').slice(11, 16) : ''
+      };
+    }).sort(function(a, b){ return (a.dorsal || 999) - (b.dorsal || 999); });
+  }
+
   return {
     partido: p, equipos: t, acta: acta, marcador: m, filas: filas,
     incidencias: (acta.incidencias || '').trim(),
-    resumen: [resumen('local', t.localNombre), resumen('visita', t.visitaNombre)]
+    resumen: [resumen('local', t.localNombre), resumen('visita', t.visitaNombre)],
+    nominas: [
+      { equipo: t.localNombre,  lista: nominaDe('local',  t.localId)  },
+      { equipo: t.visitaNombre, lista: nominaDe('visita', t.visitaId) }
+    ]
   };
 }
 
@@ -4401,9 +4490,71 @@ function descargarActaPdf(matchId){
     y += altoInc;
   }
 
+  /* --- Nómina acreditada de cada equipo, con su firma --- */
+  var colsN = [
+    { t: 'Dorsal', w: 46, k: 'dorsal' },
+    { t: 'Nombre', w: 214, k: 'nombre', al: 'left' },
+    { t: 'C. Identidad', w: 96, k: 'rut' },
+    { t: 'Hora', w: 44, k: 'hora' },
+    { t: 'Firma', w: 140, k: 'firma', imagen: true }
+  ];
+  d.nominas.forEach(function(n){
+    if (y + 74 > PIE){ doc.nuevaPagina(); encabezadoPagina(false); }
+    y += 16;
+    subtitulo('Nómina acreditada · ' + n.equipo);
+
+    function cabeceraNomina(){
+      var x = M, hh = 14;
+      colsN.forEach(function(c){
+        doc.rect(x, y, c.w, hh, { gris: 0.3, relleno: 0.90 });
+        doc.texto(x + c.w / 2, y + hh - 4.5, c.t.toUpperCase(),
+          { size: 6.5, bold: true, align: 'center', gris: 0.15 });
+        x += c.w;
+      });
+      y += hh;
+    }
+    cabeceraNomina();
+
+    if (!n.lista.length){
+      doc.rect(M, y, ANCHO, 17, { gris: 0.3 });
+      doc.texto(W / 2, y + 11.5, 'Sin jugadores marcados como asistentes.',
+        { size: 8.5, align: 'center', gris: 0.4 });
+      y += 17;
+      return;
+    }
+
+    n.lista.forEach(function(j){
+      var hh = 24;
+      if (y + hh > PIE - 14){ doc.nuevaPagina(); encabezadoPagina(false); cabeceraNomina(); }
+      var x = M;
+      colsN.forEach(function(c){
+        doc.rect(x, y, c.w, hh, { gris: 0.3 });
+        if (c.imagen){
+          if (j.firma) doc.imagen(x + 3, y + 2, c.w - 6, hh - 4, j.firma);
+          else doc.texto(x + c.w / 2, y + hh / 2 + 3, 'Sin firma',
+            { size: 7, align: 'center', gris: 0.55 });
+        } else {
+          var v = j[c.k];
+          if (c.k === 'nombre' && j.cargo && j.cargo !== 'Jugador') v = v + ' (' + j.cargo + ')';
+          var al = c.al || 'center';
+          doc.texto(al === 'left' ? x + 5 : x + c.w / 2, y + hh / 2 + 3, v || '—',
+            { size: 8.5, bold: c.k === 'dorsal', align: al === 'left' ? 'left' : 'center',
+              maxWidth: c.w - 8 });
+        }
+        x += c.w;
+      });
+      y += hh;
+    });
+
+    var firmados = n.lista.filter(function(j){ return !!j.firma; }).length;
+    doc.texto(M, y + 11, n.lista.length + ' persona(s) en la planilla · ' + firmados + ' con firma registrada',
+      { size: 7.5, gris: 0.35 });
+    y += 14;
+  });
+
   /* --- Pie: estado del acta y firmas --- */
   if (y > PIE - 78){ doc.nuevaPagina(); encabezadoPagina(false); }
-  y += 14;
+  y += 22;
   var pie = acta.cerrado
     ? 'Acta cerrada por ' + (acta.cerradoPor || '—') + ' el ' + fmtDateEs((acta.cerradoEn || '').slice(0, 10)) +
       ' a las ' + (acta.cerradoEn || '').slice(11, 16) + '.'
@@ -4548,6 +4699,33 @@ function reabrirPartido(matchId){
 /* ---------------------------------------------------------------------------
    ACTA DEL PARTIDO PARA IMPRIMIR O GUARDAR COMO PDF
 --------------------------------------------------------------------------- */
+/* Nómina acreditada de los dos equipos para el acta impresa. */
+function nominasImpresas(matchId, t){
+  var d = datosActa(matchId);
+  if (!d) return '';
+  return d.nominas.map(function(n){
+    var filas = n.lista.map(function(j){
+      return '<tr>' +
+        '<td class="c b">' + (j.dorsal || '—') + '</td>' +
+        '<td>' + escapeHtml(j.nombre) +
+          (j.cargo && j.cargo !== 'Jugador' ? ' <i>(' + escapeHtml(j.cargo) + ')</i>' : '') + '</td>' +
+        '<td class="c">' + escapeHtml(j.rut || '—') + '</td>' +
+        '<td class="c">' + escapeHtml(j.hora || '—') + '</td>' +
+        '<td class="fi">' + (j.firma ? '<img src="' + j.firma + '" alt="">' : '') + '</td>' +
+      '</tr>';
+    }).join('') || '<tr><td colspan="5" class="c">Sin jugadores marcados como asistentes.</td></tr>';
+    var firmados = n.lista.filter(function(j){ return !!j.firma; }).length;
+    return '<div class="ac-sub">Nómina acreditada · ' + escapeHtml(n.equipo) + '</div>' +
+      '<table class="ac-tb ac-nom"><thead><tr>' +
+        '<th class="c" style="width:44px;">Dorsal</th><th>Nombre</th>' +
+        '<th class="c" style="width:92px;">C. Identidad</th><th class="c" style="width:42px;">Hora</th>' +
+        '<th class="c" style="width:140px;">Firma</th>' +
+      '</tr></thead><tbody>' + filas + '</tbody></table>' +
+      '<div class="ac-pie-nom">' + n.lista.length + ' persona(s) en la planilla · ' + firmados +
+      ' con firma registrada</div>';
+  }).join('');
+}
+
 function imprimirActa(matchId){
   var p = getPartido(STATE, matchId);
   if (!p) return;
@@ -4646,6 +4824,8 @@ function imprimirActa(matchId){
         '<th class="c" style="width:88px;">Acción</th><th>Detalle</th>' +
       '</tr></thead><tbody>' + filas + '</tbody></table>' +
 
+      nominasImpresas(matchId, t) +
+
       (acta.incidencias && acta.incidencias.trim()
         ? '<div class="ac-sub">Incidencias</div>' +
           '<div class="ac-incid">' + escapeHtml(acta.incidencias.trim()).replace(/\n/g, '<br>') + '</div>'
@@ -4741,7 +4921,7 @@ function tarjetaCierre(matchId, t){
         ? '<button class="btn btn-ghost btn-xs" id="btnReabrirPartido">🔓 Reabrir partido</button>' : '') +
       '<button class="btn btn-gold" id="btnActaDescargar">⬇️ Descargar acta (PDF)</button>' +
       '<button class="btn btn-ghost" id="btnActaDatos">💾 Guardar acta (respaldo)</button>' +
-      (puedeEditarAlgo() ? '<button class="btn btn-ghost" id="btnActaImportar">📥 Importar acta</button>' : '') +
+      (puedeEditarAlgo() ? '<button class="btn btn-gold" id="btnActaImportar">📥 Importar acta</button>' : '') +
       '<button class="btn btn-ghost" id="btnActaPdf">🖨️ Imprimir acta</button>' +
       '<button class="btn btn-ghost" id="btnVolverProg">← Volver a Programación</button>' +
     '</div>' +
