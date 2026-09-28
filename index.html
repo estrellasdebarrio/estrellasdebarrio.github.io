@@ -140,6 +140,17 @@
   table.tbl td.res-empata, table.tbl td.res-empata .num-input{ color:var(--empata-txt); }
 
   /* Abreviatura de 3 letras, estilo marcador de fútbol */
+  /* Jugador suspendido: se ve antes de acreditarlo */
+  .susp-nombre{ color:var(--danger) !important; font-weight:800 !important; }
+  .susp-motivo{ display:block; font-weight:400; font-size:10.5px; color:var(--danger);
+    opacity:.85; line-height:1.3; }
+  .susp-chip{ display:inline-block; padding:3px 9px; border-radius:7px; background:var(--danger-soft);
+    color:var(--danger); border:1px solid var(--danger); font-weight:800; font-size:11px;
+    letter-spacing:.3px; white-space:nowrap; }
+  tr.fila-susp{ background:var(--danger-soft); }
+  tr.fila-susp:hover{ background:var(--danger-soft); }
+
+  .regreso-cel{ min-width:150px; line-height:1.35; font-size:12px; }
   .abrev-chip{ display:inline-block; min-width:44px; text-align:center; padding:3px 8px;
     border-radius:7px; background:var(--panel-2); border:1px solid var(--line);
     font-weight:800; font-size:12.5px; letter-spacing:1.2px; }
@@ -454,6 +465,9 @@
     #printArea .pl table.tb .b{ font-weight:bold; }
     #printArea .pl table.tb .fi{ padding:0 2px; }
     #printArea .pl table.tb .fi img{ height:19px; width:auto; max-width:100%; display:block; margin:0 auto; }
+    #printArea .pl table.tb .susp{ font-weight:bold; }
+    #printArea .pl table.tb .susp-txt{ font-weight:bold; text-align:center; font-size:8px;
+      letter-spacing:.3px; }
     #printArea .pl table.tb .w1{ width:22px; }
     #printArea .pl table.tb .w2{ width:38px; }
     #printArea .pl table.tb .w3{ width:78px; }
@@ -1002,7 +1016,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.23-11';
+var APP_VERSION = 'v2026.09.28-1';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2564,6 +2578,236 @@ function renderPosiciones(){
 RENDERERS.posiciones = renderPosiciones;
 
 
+/* ---- ui_suspensiones.js ---- */
+
+/* ============================================================================
+   SUSPENSIONES Y LIBERACIÓN DE JUGADORES
+
+   1. Cuando una sanción trae fechas de suspensión, la plataforma calcula sola
+      qué partidos debe cumplir el jugador y desde cuándo puede volver: toma el
+      calendario de su club y cuenta los partidos siguientes a la fecha de la
+      sanción. No se cuentan partidos anteriores ni los de otros clubes.
+
+   2. Un jugador suspendido aparece en rojo y en negrita en la planilla del
+      partido que le toca cumplir, y en la columna de firma dice "Suspendido"
+      en vez del botón: así la mesa lo ve antes de acreditarlo.
+
+   3. Un club puede liberar a un jugador. Queda anotado quién lo liberó, cuándo
+      y por qué, y al inscribirlo en otro club la plataforma lo avisa.
+   ========================================================================== */
+
+/* --- Calendario del club, de un día en adelante --------------------------- */
+function partidosDeEquipo(teamId){
+  return STATE.partidos.filter(function(p){
+    var t = matchRowTeams(p);
+    return t.localId === teamId || t.visitaId === teamId;
+  }).filter(function(p){ return !!p.dia; })
+    .sort(function(a, b){
+      var ka = (a.dia || '') + ' ' + (a.hora || ''), kb = (b.dia || '') + ' ' + (b.hora || '');
+      return ka < kb ? -1 : (ka > kb ? 1 : a.numero - b.numero);
+    });
+}
+
+/* Rival y etiqueta de un partido visto desde un club. */
+function rivalDe(p, teamId){
+  var t = matchRowTeams(p);
+  var esLocal = t.localId === teamId;
+  return {
+    nombre: esLocal ? t.visitaNombre : t.localNombre,
+    id: esLocal ? t.visitaId : t.localId,
+    condicion: esLocal ? 'local' : 'visita'
+  };
+}
+
+/* --- Qué partidos cumple una sanción y cuándo vuelve ---------------------- */
+function calculoSuspension(s){
+  var n = Number(s && s.partidos) || 0;
+  if (!n || !s.teamId) return null;
+  var agenda = partidosDeEquipo(s.teamId).filter(function(p){
+    return (p.dia || '') > (s.fecha || '');   /* el partido de la sanción no cuenta */
+  });
+  var cumple = agenda.slice(0, n);
+  var regreso = agenda[n] || null;
+  return {
+    fechas: n,
+    cumple: cumple,
+    regreso: regreso,
+    completa: cumple.length === n
+  };
+}
+
+/* Texto para la columna "Puede volver a jugar". */
+function textoRegreso(s){
+  var c = calculoSuspension(s);
+  if (!c) return { txt: '—', detalle: '' };
+  if (!c.cumple.length){
+    return { txt: 'Sin partidos por jugar', detalle: 'El calendario del club no tiene fechas posteriores.' };
+  }
+  if (!c.regreso){
+    var ult = c.cumple[c.cumple.length - 1];
+    return {
+      txt: 'Tras la fase de grupos',
+      detalle: 'Cumple hasta el partido N°' + ult.numero + ' (' + fmtDateEs(ult.dia) + '). ' +
+        'El calendario no tiene más fechas de su club: si clasifica, la sanción sigue en la llave.'
+    };
+  }
+  var r = rivalDe(c.regreso, s.teamId);
+  return {
+    txt: fmtDateEs(c.regreso.dia),
+    detalle: 'Partido N°' + c.regreso.numero + ' · ' + c.regreso.jornada + ' · ' +
+      (r.condicion === 'local' ? 'vs ' : 'de visita ante ') + r.nombre +
+      (c.regreso.hora ? ' · ' + c.regreso.hora : ''),
+    rival: r.nombre,
+    partido: c.regreso
+  };
+}
+
+/* --- Sanciones de una persona --------------------------------------------- */
+/* Las sanciones guardan la persona como texto ("#7 Juan Pérez"). Para las
+   nuevas se guarda además el identificador; para las antiguas se compara el
+   nombre dentro del mismo club. */
+function nombreDeSancion(s){
+  return String(s.persona || '').replace(/^#\s*\d+\s*/, '').trim();
+}
+
+function sancionesDeJugador(j){
+  if (!j) return [];
+  return (STATE.sanciones || []).filter(function(s){
+    if (s.jugadorId) return s.jugadorId === j.id;
+    if (s.teamId && s.teamId !== j.teamId) return false;
+    return normTexto(nombreDeSancion(s)) === normTexto(j.nombre);
+  });
+}
+
+/* Partidos que el jugador tiene pendientes de cumplir, por todas sus sanciones. */
+function partidosSuspendidoDe(j){
+  var ids = {};
+  sancionesDeJugador(j).forEach(function(s){
+    var c = calculoSuspension(s);
+    if (!c) return;
+    c.cumple.forEach(function(p){ ids[p.id] = s; });
+  });
+  return ids;
+}
+
+/* ¿Está suspendido para ESTE partido? Devuelve el motivo o null. */
+function suspensionEnPartido(j, matchId){
+  if (!j) return null;
+  if (j.estado === 'Suspendido'){
+    return { motivo: 'Suspendido en la nómina del club', manual: true };
+  }
+  if (j.estado === 'Excluido'){
+    return { motivo: 'Excluido del campeonato', manual: true };
+  }
+  var mapa = partidosSuspendidoDe(j);
+  var s = mapa[matchId];
+  if (!s) return null;
+  return {
+    motivo: (s.detalle || s.causal || 'Sanción') + ' · ' + etiquetaSuspension(s.partidos),
+    sancion: s,
+    manual: false
+  };
+}
+
+/* --- Liberación de jugadores ---------------------------------------------- */
+/* Aviso al inscribir a alguien que ya figura en otro club: si fue liberado, la
+   nota es informativa; si no, es la advertencia de doble inscripción. */
+function avisarJugadorEnOtroClub(nombre, dup, alConfirmar){
+  var otro = getEquipo(STATE, dup.teamId);
+  if (dup.liberado){
+    confirmModal({
+      title: '🕊️ Jugador liberado',
+      html: '<p style="font-size:14px;margin:0 0 10px;"><b>Jugador liberado por ' +
+          escapeHtml(otro ? otro.nombre : 'su club anterior') + '</b></p>' +
+        '<p><b>' + escapeHtml(nombre) + '</b> figura en la nómina de ' +
+          escapeHtml(otro ? otro.nombre : 'otro club') + ' (dorsal #' + dup.dorsal + '), pero ese club ' +
+          'registró su liberación' + (dup.liberadoEn ? ' el ' + fechaLocal(dup.liberadoEn) : '') + '.</p>' +
+        (dup.liberadoNota ? '<p style="background:var(--gold-soft);border:1px solid var(--gold);' +
+          'border-radius:10px;padding:9px 11px;font-size:12.5px;">' + escapeHtml(dup.liberadoNota) + '</p>' : '') +
+        '<p style="font-size:12.5px;color:var(--muted);">Queda inscrito en el club nuevo. Recuerde quitarlo de ' +
+        'la nómina anterior para que no aparezca en dos planillas.</p>',
+      okText: 'Inscribir en este club', okClass: 'btn-primary', cancelText: 'Cancelar',
+      onOk: alConfirmar
+    });
+    return;
+  }
+  confirmModal({
+    title: '⚠️ Jugador ya inscrito en otro equipo',
+    html: '<p><b>' + escapeHtml(nombre) + '</b> ya figura inscrito en <b>' +
+      escapeHtml(otro ? otro.nombre : 'otro equipo') + '</b> (dorsal #' + dup.dorsal + '). Según las bases, ' +
+      'en caso de inscripción múltiple el jugador queda inscrito en el club por el que juegue primero.</p>' +
+      '<p style="font-size:12.5px;color:var(--muted);">Si ese club lo liberó, regístrelo primero como liberado ' +
+      'en su plantel y vuelva a intentarlo: así queda constancia del pase.</p>' +
+      '<p>¿Autoriza de todas formas la doble inscripción?</p>',
+    okText: 'Autorizar doble inscripción', okClass: 'btn-danger', cancelText: 'Cancelar',
+    onOk: alConfirmar
+  });
+}
+
+function liberarJugador(jugadorId){
+  var j = getJugador(STATE, jugadorId);
+  if (!j) return;
+  var club = getEquipo(STATE, j.teamId);
+  formModal({
+    title: 'Liberar a ' + j.nombre,
+    okText: 'Registrar liberación',
+    width: 560,
+    bodyHtml:
+      '<p style="font-size:12.8px;color:var(--muted);line-height:1.55;margin:0 0 12px;">' +
+        'Queda constancia de que <b>' + escapeHtml(club ? club.nombre : 'el club') + '</b> libera a ' +
+        '<b>' + escapeHtml(j.nombre) + '</b>. Si otro club lo inscribe, la plataforma lo avisará con esta nota. ' +
+        'El jugador sigue en la nómina hasta que usted lo quite o lo pase al club nuevo.</p>' +
+      '<div class="field"><label>Motivo o comentario</label>' +
+        '<textarea class="txt-input" name="nota" rows="3" style="width:100%;" ' +
+        'placeholder="Ej.: liberado a petición del club, sin deudas pendientes.">' +
+        escapeHtml(j.liberadoNota || '') + '</textarea></div>',
+    onOk: function(form){
+      j.liberado = true;
+      j.liberadoDe = j.teamId;
+      j.liberadoEn = new Date().toISOString();
+      j.liberadoPor = getAutor();
+      j.liberadoNota = form.nota.value.trim();
+      logActivity('Jugador liberado', j.nombre + ' — ' + (club ? club.nombre : '—') +
+        (j.liberadoNota ? ': ' + j.liberadoNota : ''));
+      renderAll();
+      toast(j.nombre + ' quedó registrado como liberado.');
+    }
+  });
+}
+
+function anularLiberacion(jugadorId){
+  var j = getJugador(STATE, jugadorId);
+  if (!j) return;
+  confirmModal({
+    title: 'Anular la liberación',
+    html: '<p>Se quita la marca de liberado de <b>' + escapeHtml(j.nombre) + '</b>.</p>',
+    okText: 'Anular', okClass: 'btn-danger',
+    onOk: function(){
+      delete j.liberado; delete j.liberadoDe; delete j.liberadoEn;
+      delete j.liberadoPor; delete j.liberadoNota;
+      logActivity('Liberación anulada', j.nombre);
+      renderAll();
+      toast('Liberación anulada.');
+    }
+  });
+}
+
+/* Texto de la nota que se muestra al inscribirlo en otro club. */
+function notaLiberacion(j){
+  if (!j || !j.liberado) return '';
+  var club = getEquipo(STATE, j.liberadoDe || j.teamId);
+  return 'Jugador liberado por ' + (club ? club.nombre : 'su club anterior') +
+    (j.liberadoEn ? ' el ' + fechaLocal(j.liberadoEn) : '') + '.' +
+    (j.liberadoNota ? ' ' + j.liberadoNota : '');
+}
+
+/* Marca corta para las tablas. */
+function chipLiberado(j){
+  if (!j || !j.liberado) return '';
+  return '<span class="pill pill-gold" title="' + escapeHtml(notaLiberacion(j)) + '">🕊️ Liberado</span>';
+}
+
+
 /* ---- ui_sanciones.js ---- */
 /* ============================================================================
    TAB: HISTORIAL DE SANCIONES  (desplegables dependientes causal -> detalle)
@@ -2615,6 +2859,21 @@ function renderSancionesForm(){
   '</div>';
 }
 
+/* Celda "Vuelve a jugar": fecha del primer partido que ya puede disputar, con
+   la jornada y el rival debajo. */
+function celdaRegreso(s){
+  if (!Number(s.partidos)){
+    return '<span class="muted" style="font-size:11.5px;">Sin suspensión</span>';
+  }
+  var r = textoRegreso(s);
+  var c = calculoSuspension(s);
+  var pendientes = c ? c.cumple.map(function(p){ return 'N°' + p.numero; }).join(', ') : '';
+  return '<div class="regreso-cel"><b>' + escapeHtml(r.txt) + '</b>' +
+    (r.detalle ? '<div class="muted" style="font-size:11px;">' + escapeHtml(r.detalle) + '</div>' : '') +
+    (pendientes ? '<div class="muted" style="font-size:10.5px;">Cumple: ' + escapeHtml(pendientes) + '</div>' : '') +
+  '</div>';
+}
+
 function renderSancionesTabla(){
   if (!STATE.sanciones.length) return '<div class="card"><div class="empty-hint">Aún no hay sanciones registradas.</div></div>';
   var jornadaOpts = jornadasDisponibles();
@@ -2630,6 +2889,8 @@ function renderSancionesTabla(){
       '<td>' + escapeHtml(s.causal) + '<div class="muted" style="font-size:11px;">' + escapeHtml(s.detalle) + '</div></td>' +
       '<td><input class="txt-input sanc-multa" type="number" min="0" step="1000" data-id="' + s.id + '" value="' + (s.multa||0) + '" style="width:100px;"></td>' +
       '<td><select class="sanc-susp" data-id="' + s.id + '">' + suspensionOpcionesHtml(s.partidos) + '</select></td>' +
+      /* Se calcula solo desde el calendario del club: no se escribe a mano. */
+      '<td>' + celdaRegreso(s) + '</td>' +
       '<td><select class="jornada-sel" data-id="' + s.id + '"><option value="">—</option>' +
         jornadaOpts.map(function(j){ return '<option'+(s.jornada===j?' selected':'')+'>'+escapeHtml(j)+'</option>'; }).join('') + '</select></td>' +
       '<td><select class="pagada-sel" data-id="' + s.id + '"><option' + (s.pagada==='No'?' selected':'') + '>No</option><option' + (s.pagada==='Sí'?' selected':'') + '>Sí</option></select></td>' +
@@ -2644,7 +2905,9 @@ function renderSancionesTabla(){
     '<p class="desc">Todos los valores se editan aquí mismo: fecha, persona, multa, fechas de suspensión, jornada, ' +
     'pago y observaciones. El lápiz abre el club, el cargo y la causal. Cada cambio queda en el Historial de Actividad.</p>' +
     '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-    '<th>Fecha</th><th>Club</th><th>Persona</th><th>Causal / Detalle</th><th>Multa $</th><th>Sanción</th><th>Jornada</th><th>Pagada</th><th>Obs.</th><th></th>' +
+    '<th>Fecha</th><th>Club</th><th>Persona</th><th>Causal / Detalle</th><th>Multa $</th><th>Sanción</th>' +
+    '<th title="Se calcula solo con el calendario del club">Vuelve a jugar</th>' +
+    '<th>Jornada</th><th>Pagada</th><th>Obs.</th><th></th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 }
 
@@ -2687,11 +2950,12 @@ function renderSanciones(){
 
   form.addEventListener('submit', function(e){
     e.preventDefault();
-    var persona = '';
+    var persona = '', jugadorIdSancion = null;
     if (selCargo.value === 'Jugador'){
       var j = STATE.jugadores.find(function(x){ return x.id === selJugador.value; });
       if (!j){ toast('Seleccione un jugador.', true); return; }
       persona = '#' + j.dorsal + ' ' + j.nombre;
+      jugadorIdSancion = j.id;
     } else {
       persona = form.nombreLibre.value.trim();
       if (!persona){ toast('Indique el nombre de la persona.', true); return; }
@@ -2700,7 +2964,8 @@ function renderSanciones(){
     var equipoSancion = getEquipo(STATE, selTeam.value);
     STATE.sanciones.push({
       id: uid('sanc'), fecha: form.fecha.value || isoDate(new Date()), teamId: selTeam.value,
-      persona: persona, cargo: selCargo.value, causal: selCausal.value, detalle: selDetalle.value,
+      persona: persona, jugadorId: jugadorIdSancion,
+      cargo: selCargo.value, causal: selCausal.value, detalle: selDetalle.value,
       multa: Number(form.multa.value)||0, partidos: Number(form.partidos.value)||0,
       pagada: form.pagada.value, observaciones: form.obs.value.trim(), origenActa: false,
       jornada: form.jornada.value || null
@@ -3063,13 +3328,16 @@ function htmlAcredZonas(matchId){
   /* --- Columna izquierda: por acreditar --- */
   var filasPend = pendientes.map(function(j){
     var entry = (planilla[lado] || {})[j.id] || { asiste: false, dorsal: j.dorsal };
-    return '<tr data-jugador="' + j.id + '">' +
+    var susp = suspensionEnPartido(j, matchId);
+    return '<tr data-jugador="' + j.id + '"' + (susp ? ' class="fila-susp"' : '') + '>' +
       '<td class="c"><input type="checkbox" class="asiste-chk" data-match="' + matchId + '" data-lado="' + lado +
         '" data-jugador="' + j.id + '"' + (entry.asiste ? ' checked' : '') + (editable ? '' : ' disabled') + '></td>' +
       '<td><input type="number" class="num-input dorsal-input" data-match="' + matchId + '" data-lado="' + lado +
         '" data-jugador="' + j.id + '" value="' + (entry.dorsal || '') + '"' + (editable ? '' : ' disabled') + '></td>' +
-      '<td class="acred-nombre">' + escapeHtml(j.nombre) +
+      '<td class="acred-nombre' + (susp ? ' susp-nombre' : '') + '">' + escapeHtml(j.nombre) +
+        (susp ? '<span class="susp-motivo">' + escapeHtml(susp.motivo) + '</span>' : '') +
         (j.cargo && j.cargo !== 'Jugador' ? '<span class="acred-cargo">' + escapeHtml(j.cargo) + '</span>' : '') +
+        chipLiberado(j) +
         /* En pantallas angostas la fecha y el RUT se leen bajo el nombre, para
            no tener que desplazar la tabla mientras se acredita desde el celular. */
         '<span class="acred-mini">' + (j.fechaNac ? fmtDateEs(j.fechaNac) : 'Sin fecha') + ' · ' +
@@ -3078,7 +3346,8 @@ function htmlAcredZonas(matchId){
         escapeHtml(j.fechaNac || '') + '"' + (editable ? '' : ' disabled') + '></td>' +
       '<td class="col-rut"><input class="txt-input pl-rut" data-jugador="' + j.id + '" value="' + escapeHtml(j.rut || '') +
         '" placeholder="12.345.678-9"' + (editable ? '' : ' disabled') + '></td>' +
-      celdaFirma(matchId, j.id, entry.asiste) +
+      (susp ? '<td class="c"><span class="susp-chip">Suspendido</span></td>'
+            : celdaFirma(matchId, j.id, entry.asiste)) +
     '</tr>';
   }).join('');
 
@@ -3102,10 +3371,13 @@ function htmlAcredZonas(matchId){
   var filasAcr = acreditados.map(function(j){
     var entry = (planilla[lado] || {})[j.id] || { asiste: true, dorsal: j.dorsal };
     var f = firmas[j.id] || {};
-    return '<tr>' +
+    var suspA = suspensionEnPartido(j, matchId);
+    return '<tr' + (suspA ? ' class="fila-susp"' : '') + '>' +
       '<td class="c b">' + (entry.dorsal || j.dorsal || '—') + '</td>' +
-      '<td class="acred-nombre">' + escapeHtml(j.nombre) +
-        (j.cargo && j.cargo !== 'Jugador' ? '<span class="acred-cargo">' + escapeHtml(j.cargo) + '</span>' : '') + '</td>' +
+      '<td class="acred-nombre' + (suspA ? ' susp-nombre' : '') + '">' + escapeHtml(j.nombre) +
+        (suspA ? '<span class="susp-motivo">' + escapeHtml(suspA.motivo) + '</span>' : '') +
+        (j.cargo && j.cargo !== 'Jugador' ? '<span class="acred-cargo">' + escapeHtml(j.cargo) + '</span>' : '') +
+        chipLiberado(j) + '</td>' +
       '<td class="c muted col-hora" style="font-size:11.5px;">' + horaLocal(f.ts) + '</td>' +
       celdaFirma(matchId, j.id, true) +
     '</tr>';
@@ -3251,19 +3523,8 @@ function initAcredEventos(matchId, cont){
       }
 
       var dup = checkDobleInscripcion(nombre, teamId);
-      if (dup){
-        var otro = getEquipo(STATE, dup.teamId);
-        confirmModal({
-          title: '⚠️ Jugador ya inscrito en otro equipo',
-          html: '<p><b>' + escapeHtml(nombre) + '</b> ya figura inscrito en <b>' +
-            escapeHtml(otro ? otro.nombre : 'otro equipo') + '</b> (dorsal #' + dup.dorsal + '). Según las bases, ' +
-            'en caso de inscripción múltiple el jugador queda inscrito en el club por el que juegue primero. ' +
-            '¿Autoriza de todas formas la doble inscripción?</p>',
-          okText: 'Autorizar doble inscripción', okClass: 'btn-danger', cancelText: 'Cancelar', onOk: crear
-        });
-      } else {
-        crear();
-      }
+      if (dup) avisarJugadorEnOtroClub(nombre, dup, crear);
+      else crear();
     });
   });
 }
@@ -3349,7 +3610,8 @@ function renderJugadoresBody(){
     var s = allStats[j.id] || { goles:0, amarillas:0, rojas:0 };
     return '<tr data-id="'+j.id+'">' +
       '<td><input class="txt-input jg-dorsal" data-id="'+j.id+'" type="number" style="width:64px;" value="'+j.dorsal+'"></td>' +
-      '<td><input class="txt-input jg-nombre" data-id="'+j.id+'" value="'+escapeHtml(j.nombre)+'" style="width:100%;min-width:170px;"></td>' +
+      '<td><input class="txt-input jg-nombre" data-id="'+j.id+'" value="'+escapeHtml(j.nombre)+'" style="width:100%;min-width:170px;">' +
+        (j.liberado ? '<div style="margin-top:3px;">' + chipLiberado(j) + '</div>' : '') + '</td>' +
       '<td><select class="jg-cargo" data-id="'+j.id+'"><option'+(j.cargo==='Jugador'?' selected':'')+'>Jugador</option>' +
         '<option'+(j.cargo==='Director técnico'?' selected':'')+'>Director técnico</option>' +
         '<option'+(j.cargo==='Cuerpo técnico'?' selected':'')+'>Cuerpo técnico</option>' +
@@ -3363,7 +3625,13 @@ function renderJugadoresBody(){
       '<td><select class="jg-estado" data-id="'+j.id+'"><option'+(j.estado==='Activo'?' selected':'')+'>Activo</option>' +
         '<option'+(j.estado==='Suspendido'?' selected':'')+'>Suspendido</option>' +
         '<option'+(j.estado==='Excluido'?' selected':'')+'>Excluido</option></select></td>' +
-      '<td><button class="btn btn-ghost btn-xs del-jugador" data-id="'+j.id+'">🗑️</button></td>' +
+      '<td style="white-space:nowrap;">' +
+        (j.liberado
+          ? '<button class="btn btn-ghost btn-xs lib-quitar" data-id="'+j.id+'" title="' +
+            escapeHtml(notaLiberacion(j)) + '">🕊️ Liberado</button>'
+          : '<button class="btn btn-ghost btn-xs lib-jugador" data-id="'+j.id+'" ' +
+            'title="Dejar constancia de que el club lo libera">🕊️ Liberar</button>') +
+        ' <button class="btn btn-ghost btn-xs del-jugador" data-id="'+j.id+'">🗑️</button></td>' +
     '</tr>';
   }).join('') || '<tr><td colspan="11" class="empty-hint">Aún no hay jugadores en este equipo.</td></tr>';
 
@@ -3389,7 +3657,7 @@ function renderJugadoresBody(){
       '<div class="card-head"><h3>' + teamLogoHtml(equipo,'lg') + ' &nbsp;Jugadores</h3>' +
       '<span class="muted" style="font-size:12px;">' + jugadores.length + ' inscritos (máx. 25, bases 3.1)</span></div>' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>Dorsal</th><th>Nombre</th><th>Cargo</th><th>RUT</th><th>Nacionalidad</th><th>Fecha Nac.</th><th>⚽ Goles</th><th>🟨 Amarillas</th><th>🟥 Rojas</th><th>Estado</th><th></th>' +
+        '<th>Dorsal</th><th>Nombre</th><th>Cargo</th><th>RUT</th><th>Nacionalidad</th><th>Fecha Nac.</th><th>⚽ Goles</th><th>🟨 Amarillas</th><th>🟥 Rojas</th><th>Estado</th><th>Pase</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<form id="addJugadorForm" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
         '<div class="field"><label>Nombre</label><input class="txt-input" name="nombre" placeholder="Nombre completo"></div>' +
@@ -3418,6 +3686,13 @@ function renderJugadoresBody(){
   bindField('jg-contacto','contacto');
   bindField('jg-fecha','fechaNac');
   bindField('jg-estado','estado', null, 'Estado de jugador cambiado');
+
+  body.querySelectorAll('.lib-jugador').forEach(function(btn){
+    btn.addEventListener('click', function(){ liberarJugador(btn.dataset.id); });
+  });
+  body.querySelectorAll('.lib-quitar').forEach(function(btn){
+    btn.addEventListener('click', function(){ anularLiberacion(btn.dataset.id); });
+  });
 
   body.querySelectorAll('.del-jugador').forEach(function(btn){
     btn.addEventListener('click', function(){
@@ -3468,14 +3743,8 @@ function renderJugadoresBody(){
       toast('Jugador agregado.');
     }
     var dup = checkDobleInscripcion(nombre, JUGADORES_SELECTED_TEAM);
-    if (dup){
-      var otroEquipo = getEquipo(STATE, dup.teamId);
-      confirmModal({
-        title:'⚠️ Jugador ya inscrito en otro equipo',
-        html:'<p><b>'+escapeHtml(nombre)+'</b> ya figura inscrito en <b>'+escapeHtml(otroEquipo?otroEquipo.nombre:'otro equipo')+'</b>. ¿Autoriza la doble inscripción?</p>',
-        okText:'Autorizar', okClass:'btn-danger', cancelText:'Cancelar', onOk: crear
-      });
-    } else { crear(); }
+    if (dup) avisarJugadorEnOtroClub(nombre, dup, crear);
+    else crear();
   });
 }
 
@@ -5591,7 +5860,7 @@ function renderActaBody(){
       var j = getJugador(STATE, a.playerId);
       STATE.sanciones.push({
         id: uid('sanc'), fecha: p.dia, teamId: j ? j.teamId : null,
-        persona: j ? ('#' + j.dorsal + ' ' + j.nombre) : '—', cargo: 'Jugador',
+        persona: j ? ('#' + j.dorsal + ' ' + j.nombre) : '—', jugadorId: j ? j.id : null, cargo: 'Jugador',
         causal: a.causal || 'Tarjetas y disciplina en cancha',
         detalle: a.detalle || 'Expulsión registrada en Acta — definir causal exacta',
         multa: a.multa || 0,
@@ -5905,7 +6174,7 @@ function reponerSancionesDeActa(p, acta){
     if (yaEsta) return;
     STATE.sanciones.push({
       id: uid('sanc'), fecha: p.dia, teamId: j ? j.teamId : null,
-      persona: persona, cargo: 'Jugador',
+      persona: persona, jugadorId: j ? j.id : null, cargo: 'Jugador',
       causal: a.causal || 'Tarjetas y disciplina en cancha',
       detalle: a.detalle || 'Expulsión registrada en Acta — definir causal exacta',
       multa: a.multa || 0,
@@ -7363,7 +7632,8 @@ function imprimirAcreditacion(matchId){
       var j = getJugador(STATE, jid);
       return planilla[lado][jid].asiste && j && j.teamId === teamId;
     }).map(function(jid){
-      return { jid: jid, j: getJugador(STATE, jid), dorsal: planilla[lado][jid].dorsal || '' };
+      return { jid: jid, j: getJugador(STATE, jid), dorsal: planilla[lado][jid].dorsal || '',
+               susp: !!suspensionEnPartido(getJugador(STATE, jid), matchId) };
     });
 
     var jugadores = presentes.filter(function(x){ return !x.j.cargo || x.j.cargo === 'Jugador'; })
@@ -7384,10 +7654,11 @@ function imprimirAcreditacion(matchId){
       var f = firmas[x.jid];
       return '<tr>' +
         '<td class="c b">' + (x.dorsal || '') + '</td>' +
-        '<td>' + escapeHtml(x.j.nombre) + '</td>' +
+        '<td' + (x.susp ? ' class="susp"' : '') + '>' + escapeHtml(x.j.nombre) + '</td>' +
         '<td class="c">' + (x.j.fechaNac ? fmtDateEs(x.j.fechaNac) : '') + '</td>' +
         '<td class="c">' + escapeHtml(x.j.rut || '') + '</td>' +
-        '<td class="fi">' + (f ? '<img src="' + f.img + '">' : '') + '</td>' +
+        (x.susp ? '<td class="susp-txt">SUSPENDIDO</td>'
+                : '<td class="fi">' + (f ? '<img src="' + f.img + '">' : '') + '</td>') +
       '</tr>';
     }
     /* Filas en blanco para inscribir a mano a quien llegue después */
