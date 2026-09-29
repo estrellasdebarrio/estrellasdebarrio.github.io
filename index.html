@@ -150,6 +150,14 @@
   tr.fila-susp{ background:var(--danger-soft); }
   tr.fila-susp:hover{ background:var(--danger-soft); }
 
+  /* Fila de filtros de Programación */
+  table.tbl tr.fila-filtros th, table.tbl tr.fila-filtros td{ background:var(--panel-2);
+    border-bottom:1px solid var(--line); padding:5px 6px; vertical-align:middle; }
+  tr.fila-filtros .fp{ font-size:11.8px; padding:4px 6px; border:1px solid var(--line);
+    border-radius:7px; background:var(--panel); color:var(--ink); max-width:100%; }
+  tr.fila-filtros select.fp{ max-width:150px; }
+  tr.fila-filtros input.fp::placeholder{ font-size:11px; }
+
   .regreso-cel{ min-width:150px; line-height:1.35; font-size:12px; }
   .abrev-chip{ display:inline-block; min-width:44px; text-align:center; padding:3px 8px;
     border-radius:7px; background:var(--panel-2); border:1px solid var(--line);
@@ -1016,7 +1024,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.28-1';
+var APP_VERSION = 'v2026.09.29-1';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -2299,6 +2307,148 @@ function renderEquipos(){
 RENDERERS.equipos = renderEquipos;
 
 
+/* ---- ui_filtros_programacion.js ---- */
+
+/* ============================================================================
+   FILTROS DE PROGRAMACIÓN Y RESULTADOS
+
+   Con 30 partidos de grupos más la llave, encontrar uno a simple vista cuesta.
+   Bajo los títulos de la tabla hay una fila de filtros: número, fecha, grupo,
+   día, hora, club local, goles y club visita.
+
+   Los filtros NO redibujan la tabla: solo esconden las filas que no calzan.
+   Así no se pierde el foco ni lo que se esté escribiendo, y el filtro sigue
+   puesto aunque se cargue un resultado.
+   ========================================================================== */
+
+var PROG_FILTROS = { num:'', jornada:'', grupo:'', dia:'', hora:'', local:'', gl:'', gv:'', visita:'' };
+
+function hayFiltrosProg(){
+  return Object.keys(PROG_FILTROS).some(function(k){ return PROG_FILTROS[k] !== ''; });
+}
+
+function limpiarFiltrosProg(){
+  Object.keys(PROG_FILTROS).forEach(function(k){ PROG_FILTROS[k] = ''; });
+  var cont = document.getElementById('panel-programacion');
+  if (!cont) return;
+  cont.querySelectorAll('.fp').forEach(function(el){ el.value = ''; });
+  aplicarFiltrosProg();
+}
+
+/* Valores distintos de un campo, para armar los desplegables. */
+function valoresDeGrupos(campo){
+  var seen = {}, out = [];
+  STATE.partidos.filter(function(p){ return p.etapa === 'Fase de Grupos'; }).forEach(function(p){
+    var v = p[campo];
+    if (v && !seen[v]){ seen[v] = true; out.push(v); }
+  });
+  return out.sort();
+}
+
+function opcionesFiltro(lista, sel, formato){
+  return lista.map(function(v){
+    return '<option value="' + escapeHtml(v) + '"' + (sel === v ? ' selected' : '') + '>' +
+      escapeHtml(formato ? formato(v) : v) + '</option>';
+  }).join('');
+}
+
+/* Fila de filtros que va bajo los títulos de la tabla de grupos. */
+function filaFiltrosProg(){
+  var equipos = STATE.equipos.slice().sort(function(a, b){
+    return String(a.nombre).localeCompare(String(b.nombre), 'es');
+  });
+  var optEquipos = function(sel){
+    return '<option value="">Todos</option>' + equipos.map(function(e){
+      return '<option value="' + e.id + '"' + (sel === e.id ? ' selected' : '') + '>' +
+        escapeHtml(e.nombre) + '</option>';
+    }).join('');
+  };
+
+  return '<tr class="fila-filtros">' +
+    '<td><input class="fp txt-input" data-f="num" value="' + escapeHtml(PROG_FILTROS.num) + '" ' +
+      'placeholder="N°" style="width:52px;"></td>' +
+    '<td><select class="fp" data-f="jornada"><option value="">Todas</option>' +
+      opcionesFiltro(valoresDeGrupos('jornada'), PROG_FILTROS.jornada) + '</select></td>' +
+    '<td><select class="fp" data-f="grupo"><option value="">A y B</option>' +
+      opcionesFiltro(['A','B'], PROG_FILTROS.grupo) + '</select></td>' +
+    '<td><input class="fp txt-input" type="date" data-f="dia" value="' + escapeHtml(PROG_FILTROS.dia) + '"></td>' +
+    '<td><select class="fp" data-f="hora"><option value="">Todas</option>' +
+      opcionesFiltro(valoresDeGrupos('hora'), PROG_FILTROS.hora) + '</select></td>' +
+    '<td><select class="fp" data-f="local">' + optEquipos(PROG_FILTROS.local) + '</select></td>' +
+    '<td><input class="fp txt-input" data-f="gl" value="' + escapeHtml(PROG_FILTROS.gl) + '" ' +
+      'placeholder="GL" style="width:46px;"></td>' +
+    '<td></td>' +
+    '<td><input class="fp txt-input" data-f="gv" value="' + escapeHtml(PROG_FILTROS.gv) + '" ' +
+      'placeholder="GV" style="width:46px;"></td>' +
+    '<td><select class="fp" data-f="visita">' + optEquipos(PROG_FILTROS.visita) + '</select></td>' +
+    '<td><button class="btn btn-ghost btn-xs" id="btnLimpiarFiltros" title="Quitar todos los filtros">✕ Limpiar</button></td>' +
+  '</tr>';
+}
+
+/* Datos de cada fila, para poder filtrar sin volver a dibujar la tabla. */
+function datosFiltroFila(p){
+  var t = matchRowTeams(p);
+  return ' data-f-num="' + p.numero + '"' +
+    ' data-f-jornada="' + escapeHtml(p.jornada || '') + '"' +
+    ' data-f-grupo="' + escapeHtml(p.grupo || '') + '"' +
+    ' data-f-dia="' + escapeHtml(p.dia || '') + '"' +
+    ' data-f-hora="' + escapeHtml(p.hora || '') + '"' +
+    ' data-f-local="' + escapeHtml(t.localId || '') + '"' +
+    ' data-f-visita="' + escapeHtml(t.visitaId || '') + '"' +
+    ' data-f-gl="' + (p.golesLocal === null || p.golesLocal === '' ? '' : p.golesLocal) + '"' +
+    ' data-f-gv="' + (p.golesVisita === null || p.golesVisita === '' ? '' : p.golesVisita) + '"';
+}
+
+function aplicarFiltrosProg(){
+  var tabla = document.getElementById('tablaGrupos');
+  if (!tabla) return;
+  var filas = tabla.querySelectorAll('tbody tr[data-match]');
+  var visibles = 0;
+
+  filas.forEach(function(tr){
+    var ok = true;
+    /* El número calza por comienzo: escribir "1" muestra 1, 10, 11… y
+       escribir "12" deja solo el 12. */
+    if (PROG_FILTROS.num && String(tr.dataset.fNum).indexOf(PROG_FILTROS.num) !== 0) ok = false;
+    ['jornada','grupo','dia','hora','local','visita'].forEach(function(k){
+      if (ok && PROG_FILTROS[k] && tr.dataset['f' + k.charAt(0).toUpperCase() + k.slice(1)] !== PROG_FILTROS[k]) ok = false;
+    });
+    if (ok && PROG_FILTROS.gl && String(tr.dataset.fGl) !== PROG_FILTROS.gl) ok = false;
+    if (ok && PROG_FILTROS.gv && String(tr.dataset.fGv) !== PROG_FILTROS.gv) ok = false;
+
+    tr.classList.toggle('hidden', !ok);
+    if (ok) visibles++;
+  });
+
+  var aviso = document.getElementById('contadorFiltros');
+  if (aviso){
+    aviso.textContent = hayFiltrosProg()
+      ? 'Mostrando ' + visibles + ' de ' + filas.length + ' partidos'
+      : filas.length + ' partidos';
+    aviso.classList.toggle('pill-gold', hayFiltrosProg());
+    aviso.classList.toggle('pill-muted', !hayFiltrosProg());
+  }
+
+  var vacio = document.getElementById('filaSinResultados');
+  if (vacio) vacio.classList.toggle('hidden', visibles > 0);
+}
+
+function initFiltrosProg(){
+  var panel = document.getElementById('panel-programacion');
+  if (!panel) return;
+  panel.querySelectorAll('.fp').forEach(function(el){
+    var evento = (el.tagName === 'SELECT' || el.type === 'date') ? 'change' : 'input';
+    el.addEventListener(evento, function(){
+      PROG_FILTROS[el.dataset.f] = el.value;
+      aplicarFiltrosProg();
+    });
+  });
+  var btn = document.getElementById('btnLimpiarFiltros');
+  if (btn) btn.addEventListener('click', limpiarFiltrosProg);
+  aplicarFiltrosProg();
+}
+
+
 /* ---- ui_programacion.js ---- */
 /* ============================================================================
    TAB: PROGRAMACION Y RESULTADOS
@@ -2352,7 +2502,7 @@ function renderProgramacion(){
       else if (gl < gv){ cl = ' res-pierde'; cv = ' res-gana'; }
       else { cl = ' res-empata'; cv = ' res-empata'; }
     }
-    return '<tr data-match="' + p.id + '">' +
+    return '<tr data-match="' + p.id + '"' + datosFiltroFila(p) + '>' +
       '<td>' + p.numero + '</td>' +
       '<td>' + escapeHtml(p.jornada) + '</td>' +
       '<td>' + (p.grupo ? '<span class="pill pill-' + p.grupo + '">' + p.grupo + '</span>' : '<span class="pill pill-muted">—</span>') + '</td>' +
@@ -2383,12 +2533,16 @@ function renderProgramacion(){
       '<div class="card-head"><div><h3>Fase de grupos</h3>' +
       '<p class="desc" style="margin:2px 0 0;">Todos contra todos a una rueda, 5 fechas. Calendario vigente: dos partidos por día (21:00 y 22:00), de lunes a jueves, ordenado para maximizar el descanso entre partidos de cada club.</p></div>' +
       '<div class="row-flex">' +
+        '<span class="pill pill-muted" id="contadorFiltros"></span>' +
         '<button class="btn btn-ghost btn-xs" id="btnExportActas">⬇️ Guardar todas las actas</button>' +
         (esAdmin() ? '<button class="btn btn-primary btn-xs" id="btnAddMatch">➕ Agregar partido</button>' : '') +
       '</div></div>' +
-      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<div class="tbl-wrap"><table class="tbl" id="tablaGrupos"><thead><tr>' +
       '<th>N°</th><th>Fecha</th><th>Grupo</th><th>Día</th><th>Hora</th><th>Local</th><th>GL</th><th></th><th>GV</th><th>Visita</th><th>Planilla</th>' +
-      '</tr></thead><tbody>' + grupos.map(fila).join('') + '</tbody></table></div>' +
+      '</tr>' + filaFiltrosProg() + '</thead><tbody>' + grupos.map(fila).join('') +
+      '<tr id="filaSinResultados" class="hidden"><td colspan="11" class="empty-hint">' +
+      'Ningún partido calza con el filtro. Toque «✕ Limpiar» para verlos todos.</td></tr>' +
+      '</tbody></table></div>' +
     '</div>' +
     '<div class="card">' +
       '<h3>Llave de eliminación directa</h3>' +
@@ -2467,6 +2621,8 @@ function renderProgramacion(){
 
   var btnAdd = document.getElementById('btnAddMatch');
   if (btnAdd) btnAdd.addEventListener('click', abrirModalAgregarPartido);
+
+  initFiltrosProg();
 
   var bEA = document.getElementById('btnExportActas');
   if (bEA) bEA.addEventListener('click', descargarTodasLasActas);
