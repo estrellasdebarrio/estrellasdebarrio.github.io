@@ -22,6 +22,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light dark">
 <title>Liga de Fútbol Estrellas de Barrio 2026</title>
+
+<!-- ===================================================================
+     App instalable (PWA)
+
+     Con estas líneas y los archivos manifest.json, sw.js e icon-*.png
+     junto a este index.html, la plataforma se puede instalar en el
+     celular como una aplicación: queda el ícono de la liga en la
+     pantalla de inicio y abre sin la barra del navegador.
+
+     En Android, Chrome ofrece "Instalar aplicación".
+     En iPhone, Safari: Compartir → "Añadir a pantalla de inicio".
+     =================================================================== -->
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0d1b33">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estrellas 2026">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --panel-2:#f6f8fb; --line:#e1e6ef;
@@ -564,6 +584,7 @@
         <input type="file" id="fileFirmas" accept="application/json,.json" class="hidden">
         <input type="file" id="fileCausales" accept=".xlsx,.csv" class="hidden">
         <button class="btn btn-primary btn-xs" id="btnExport">📄 Ver / copiar mis datos</button>
+        <button class="btn btn-ghost btn-xs" id="btnInstalar" title="Instalar en este dispositivo">📲 Instalar app</button>
         <button class="btn btn-ghost btn-xs" id="btnSalir">🚪 Salir</button>
       </div>
     </div>
@@ -1024,7 +1045,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.09.29-1';
+var APP_VERSION = 'v2026.09.29-2';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -9277,7 +9298,61 @@ RENDERERS.usuarios = renderUsuarios;
    ============================================================================ */
 var STATE = buildInitialState();
 
+/* ---------------------------------------------------------------------------
+   APP INSTALABLE
+
+   Se registra el service worker (solo si la página está publicada en https,
+   no al abrir el archivo con doble clic) y, cuando el navegador avisa que la
+   plataforma se puede instalar, aparece un botón en la barra superior.
+--------------------------------------------------------------------------- */
+var PROMPT_INSTALAR = null;
+
+function initApp(){
+  var seguro = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if ('serviceWorker' in navigator && seguro){
+    navigator.serviceWorker.register('./sw.js').catch(function(err){
+      console.warn('No se pudo registrar el service worker:', err);
+    });
+  }
+
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    PROMPT_INSTALAR = e;
+    var b = document.getElementById('btnInstalar');
+    if (b) b.classList.remove('hidden');
+  });
+
+  var btn = document.getElementById('btnInstalar');
+  if (btn) btn.addEventListener('click', function(){
+    if (!PROMPT_INSTALAR){
+      alertModal('Instalar la plataforma',
+        '<p><b>En Android (Chrome):</b> toque los tres puntos ⋮ arriba a la derecha y elija ' +
+        '«Instalar aplicación» o «Agregar a pantalla principal».</p>' +
+        '<p><b>En iPhone (Safari):</b> toque el botón Compartir y elija ' +
+        '«Añadir a pantalla de inicio».</p>' +
+        '<p style="font-size:12.5px;color:var(--muted);">Queda el ícono de la liga entre sus ' +
+        'aplicaciones y abre a pantalla completa. Se sigue actualizando sola.</p>');
+      return;
+    }
+    PROMPT_INSTALAR.prompt();
+    PROMPT_INSTALAR.userChoice.then(function(r){
+      if (r && r.outcome === 'accepted'){
+        btn.classList.add('hidden');
+        toast('Plataforma instalada. Búsquela como «Estrellas 2026».');
+      }
+      PROMPT_INSTALAR = null;
+    });
+  });
+
+  /* Ya instalada: el botón no tiene sentido. */
+  if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches){
+    var b2 = document.getElementById('btnInstalar');
+    if (b2) b2.classList.add('hidden');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async function(){
+  initApp();
   initTabsNav();
   initMenuMovil();
   initIO();
