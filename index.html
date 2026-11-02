@@ -169,6 +169,12 @@
     letter-spacing:.3px; white-space:nowrap; }
   tr.fila-susp{ background:var(--danger-soft); }
   tr.fila-susp:hover{ background:var(--danger-soft); }
+  /* Suspendido liberado para el partido: se acredita normal, con la nota a la vista */
+  tr.fila-lib{ background:var(--gold-soft); }
+  tr.fila-lib .susp-motivo{ color:var(--muted); text-decoration:line-through; }
+  .lib-chip{ display:inline-block; margin-top:4px; font-size:10.5px; white-space:nowrap; }
+  table.tbl tr.fila-lib td{ background:var(--gold-soft); }
+  .lib-nota{ display:block; font-weight:400; font-size:10.5px; color:var(--muted); line-height:1.3; margin-top:2px; }
 
   /* Fila de filtros de Programación */
   table.tbl tr.fila-filtros th, table.tbl tr.fila-filtros td{ background:var(--panel-2);
@@ -1046,7 +1052,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.10.07-1';
+var APP_VERSION = 'v2026.11.02-1';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -1141,6 +1147,7 @@ function buildInitialState(){
     sanciones: [],
     causales: JSON.parse(JSON.stringify(CAUSALES)),
     pagosPlanilla: {},
+    habilitaciones: {},   // matchId -> { [playerId]: {ts, autor, motivo} } — suspendidos liberados para ese partido
     cambioManchester: true,
     valorPlanilla: VALOR_PLANILLA_DEFECTO,
     causalesVersion: CAUSALES_VERSION,
@@ -1608,6 +1615,7 @@ function normalizarEstadoCargado(data){
   data.actas = data.actas || {};
   data.sanciones = data.sanciones || [];
   data.pagosPlanilla = data.pagosPlanilla || {};
+  data.habilitaciones = data.habilitaciones || {};
 
   /* Cambio de club: Cultural Esfuerzo fue reemplazado por Manchester. Se aplica
      una sola vez sobre el estado guardado, conservando partidos, jugadores,
@@ -2913,8 +2921,20 @@ function partidosSuspendidoDe(j){
   return ids;
 }
 
-/* ¿Está suspendido para ESTE partido? Devuelve el motivo o null. */
+/* ¿Está suspendido para ESTE partido? Devuelve el motivo o null. Si la
+   organización lo liberó para este partido, el resultado trae "liberacion"
+   y deja de bloquear la acreditación (bloqueaPartido). */
 function suspensionEnPartido(j, matchId){
+  var s = suspensionBase(j, matchId);
+  if (s){
+    var h = habilitacionDe(matchId, j.id);
+    if (h) s.liberacion = h;
+  }
+  return s;
+}
+function bloqueaPartido(susp){ return !!(susp && !susp.liberacion); }
+
+function suspensionBase(j, matchId){
   if (!j) return null;
   if (j.estado === 'Suspendido'){
     return { motivo: 'Suspendido en la nómina del club', manual: true };
@@ -2930,6 +2950,89 @@ function suspensionEnPartido(j, matchId){
     sancion: s,
     manual: false
   };
+}
+
+/* --- Liberar a un suspendido para un partido puntual ---------------------- */
+/* La organización puede habilitar a un jugador suspendido solo para un
+   partido (p. ej. sanción revisada o apelación acogida). No borra la sanción
+   ni cambia el cálculo de fechas: queda anotado quién lo liberó, cuándo y
+   por qué, y se puede revertir. */
+function puedeLiberarSuspension(){ return esAdmin(); }
+
+function habilitacionDe(matchId, jugadorId){
+  var m = (STATE.habilitaciones || {})[matchId];
+  return (m && m[jugadorId]) || null;
+}
+
+function notaHabilitacion(h){
+  return 'Liberado por ' + (h.autor || '—') + ' el ' + fechaYHoraLocal(h.ts) +
+    (h.motivo ? ' · ' + h.motivo : '');
+}
+
+function abrirLiberarSuspendido(matchId, jugadorId, alTerminar){
+  var j = getJugador(STATE, jugadorId);
+  var p = getPartido(STATE, matchId);
+  if (!j || !p) return;
+  if (!puedeLiberarSuspension()){ toast('Solo el administrador puede liberar a un jugador suspendido.', true); return; }
+  var susp = suspensionBase(j, matchId);
+  var t = matchRowTeams(p);
+  formModal({
+    title: '🔓 Liberar jugador suspendido',
+    okText: 'Liberar para este partido',
+    bodyHtml:
+      '<p style="margin:0 0 8px;"><b>' + escapeHtml(j.nombre) + '</b> (' + escapeHtml(nombreEquipo(STATE, j.teamId)) + ')</p>' +
+      '<p class="desc" style="margin:0 0 10px;">Partido N°' + p.numero + ' · ' + escapeHtml(t.localNombre) + ' vs ' +
+        escapeHtml(t.visitaNombre) + ' · ' + fmtDateEs(p.dia) + ' ' + escapeHtml(p.hora || '') + '</p>' +
+      (susp ? '<p style="background:var(--danger-soft);border:1px solid var(--danger);border-radius:10px;padding:8px 11px;' +
+        'font-size:12.5px;color:var(--danger);margin:0 0 12px;">' + escapeHtml(susp.motivo) + '</p>' : '') +
+      '<div class="field"><label>Motivo de la liberación (obligatorio)</label>' +
+        '<textarea class="txt-input" name="motivo" rows="3" style="width:100%;" ' +
+        'placeholder="Ej: Apelación acogida por la comisión organizadora"></textarea></div>' +
+      '<p class="desc" style="margin:8px 0 0;">Queda habilitado solo para este partido. La sanción y su cálculo de ' +
+        'fechas no se modifican' + (j.estado === 'Suspendido' ? '; su estado en la nómina sigue como «Suspendido»' : '') +
+        '. Se registra en el Historial de Actividad.</p>',
+    onOk: function(form){
+      var motivo = form.motivo.value.trim();
+      if (!motivo){ toast('Indique el motivo de la liberación.', true); return false; }
+      STATE.habilitaciones = STATE.habilitaciones || {};
+      if (!STATE.habilitaciones[matchId]) STATE.habilitaciones[matchId] = {};
+      STATE.habilitaciones[matchId][jugadorId] = { ts: new Date().toISOString(), autor: getAutor(), motivo: motivo };
+      logActivity('Suspendido liberado para un partido', j.nombre + ' (' + nombreEquipo(STATE, j.teamId) + ') — Partido N°' +
+        p.numero + ' · ' + motivo);
+      scheduleSave();
+      if (alTerminar) alTerminar();
+      toast(j.nombre + ' liberado para el partido N°' + p.numero + '. Ya puede acreditarse.');
+    }
+  });
+}
+
+function revertirLiberacion(matchId, jugadorId, alTerminar){
+  var j = getJugador(STATE, jugadorId);
+  var p = getPartido(STATE, matchId);
+  if (!j || !p) return;
+  if (!puedeLiberarSuspension()){ toast('Solo el administrador puede revertir una liberación.', true); return; }
+  var firmado = !!firmasDe(matchId)[jugadorId];
+  confirmModal({
+    title: 'Revertir liberación',
+    html: '<p>¿Volver a dejar a <b>' + escapeHtml(j.nombre) + '</b> como suspendido para el partido N°' + p.numero + '?</p>' +
+      (firmado ? '<p style="font-size:12.5px;color:var(--danger);">El jugador ya firmó: la firma se mantiene, pero ' +
+        'volverá a aparecer marcado como suspendido. Anule la firma si no debe jugar.</p>' : ''),
+    okText: 'Revertir', okClass: 'btn-danger',
+    onOk: function(){
+      var m = (STATE.habilitaciones || {})[matchId];
+      if (m){ delete m[jugadorId]; if (!Object.keys(m).length) delete STATE.habilitaciones[matchId]; }
+      logActivity('Liberación revertida', j.nombre + ' (' + nombreEquipo(STATE, j.teamId) + ') — Partido N°' + p.numero);
+      scheduleSave();
+      if (alTerminar) alTerminar();
+      toast('Liberación revertida.');
+    }
+  });
+}
+
+function chipHabilitado(susp){
+  if (!susp || !susp.liberacion) return '';
+  return '<span class="pill pill-gold lib-chip" title="' + escapeHtml(notaHabilitacion(susp.liberacion)) + '">🔓 Liberado</span>' +
+    '<span class="lib-nota">' + escapeHtml(susp.liberacion.motivo || '') + '</span>';
 }
 
 /* --- Liberación de jugadores ---------------------------------------------- */
@@ -3552,13 +3655,15 @@ function htmlAcredZonas(matchId){
   var filasPend = pendientes.map(function(j){
     var entry = (planilla[lado] || {})[j.id] || { asiste: false, dorsal: j.dorsal };
     var susp = suspensionEnPartido(j, matchId);
-    return '<tr data-jugador="' + j.id + '"' + (susp ? ' class="fila-susp"' : '') + '>' +
+    var bloq = bloqueaPartido(susp);
+    return '<tr data-jugador="' + j.id + '"' + (bloq ? ' class="fila-susp"' : (susp ? ' class="fila-lib"' : '')) + '>' +
       '<td class="c"><input type="checkbox" class="asiste-chk" data-match="' + matchId + '" data-lado="' + lado +
         '" data-jugador="' + j.id + '"' + (entry.asiste ? ' checked' : '') + (editable ? '' : ' disabled') + '></td>' +
       '<td><input type="number" class="num-input dorsal-input" data-match="' + matchId + '" data-lado="' + lado +
         '" data-jugador="' + j.id + '" value="' + (entry.dorsal || '') + '"' + (editable ? '' : ' disabled') + '></td>' +
-      '<td class="acred-nombre' + (susp ? ' susp-nombre' : '') + '">' + escapeHtml(j.nombre) +
+      '<td class="acred-nombre' + (bloq ? ' susp-nombre' : '') + '">' + escapeHtml(j.nombre) +
         (susp ? '<span class="susp-motivo">' + escapeHtml(susp.motivo) + '</span>' : '') +
+        chipHabilitado(susp) +
         (j.cargo && j.cargo !== 'Jugador' ? '<span class="acred-cargo">' + escapeHtml(j.cargo) + '</span>' : '') +
         chipLiberado(j) +
         /* En pantallas angostas la fecha y el RUT se leen bajo el nombre, para
@@ -3569,8 +3674,10 @@ function htmlAcredZonas(matchId){
         escapeHtml(j.fechaNac || '') + '"' + (editable ? '' : ' disabled') + '></td>' +
       '<td class="col-rut"><input class="txt-input pl-rut" data-jugador="' + j.id + '" value="' + escapeHtml(j.rut || '') +
         '" placeholder="12.345.678-9"' + (editable ? '' : ' disabled') + '></td>' +
-      (susp ? '<td class="c"><span class="susp-chip">Suspendido</span></td>'
-            : celdaFirma(matchId, j.id, entry.asiste)) +
+      (bloq ? '<td class="c"><span class="susp-chip">Suspendido</span>' +
+                (puedeLiberarSuspension() && editable ? '<br><button class="btn btn-gold btn-xs liberar-susp" data-jugador="' + j.id +
+                  '" style="margin-top:5px;" title="Habilitar a este jugador solo para este partido">🔓 Liberar</button>' : '') + '</td>'
+            : celdaFirmaLib(matchId, j.id, entry.asiste, susp)) +
     '</tr>';
   }).join('');
 
@@ -3595,14 +3702,16 @@ function htmlAcredZonas(matchId){
     var entry = (planilla[lado] || {})[j.id] || { asiste: true, dorsal: j.dorsal };
     var f = firmas[j.id] || {};
     var suspA = suspensionEnPartido(j, matchId);
-    return '<tr' + (suspA ? ' class="fila-susp"' : '') + '>' +
+    var bloqA = bloqueaPartido(suspA);
+    return '<tr' + (bloqA ? ' class="fila-susp"' : (suspA ? ' class="fila-lib"' : '')) + '>' +
       '<td class="c b">' + (entry.dorsal || j.dorsal || '—') + '</td>' +
-      '<td class="acred-nombre' + (suspA ? ' susp-nombre' : '') + '">' + escapeHtml(j.nombre) +
+      '<td class="acred-nombre' + (bloqA ? ' susp-nombre' : '') + '">' + escapeHtml(j.nombre) +
         (suspA ? '<span class="susp-motivo">' + escapeHtml(suspA.motivo) + '</span>' : '') +
+        chipHabilitado(suspA) +
         (j.cargo && j.cargo !== 'Jugador' ? '<span class="acred-cargo">' + escapeHtml(j.cargo) + '</span>' : '') +
         chipLiberado(j) + '</td>' +
       '<td class="c muted col-hora" style="font-size:11.5px;">' + horaLocal(f.ts) + '</td>' +
-      celdaFirma(matchId, j.id, true) +
+      celdaFirmaLib(matchId, j.id, true, suspA) +
     '</tr>';
   }).join('');
 
@@ -3675,6 +3784,14 @@ function initAcredEventos(matchId, cont){
   });
 
   initFirmasEventos(cont);
+
+  function trasLiberar(){ pintarAcredZonas(matchId); refrescarResumenPlanilla(matchId); }
+  cont.querySelectorAll('.liberar-susp').forEach(function(btn){
+    btn.addEventListener('click', function(){ abrirLiberarSuspendido(matchId, btn.dataset.jugador, trasLiberar); });
+  });
+  cont.querySelectorAll('.revertir-lib').forEach(function(btn){
+    btn.addEventListener('click', function(){ revertirLiberacion(matchId, btn.dataset.jugador, trasLiberar); });
+  });
 
   cont.querySelectorAll('.asiste-chk').forEach(function(chk){
     chk.addEventListener('change', function(){
@@ -8243,6 +8360,15 @@ function resumenAcreditacion(matchId, teamId, lado){
 }
 
 /* Celda de acreditación de cada jugador dentro de la planilla */
+/* Celda de firma de un jugador liberado: la firma normal, más el botón para
+   revertir la liberación (administrador). */
+function celdaFirmaLib(matchId, jugadorId, asiste, susp){
+  var td = celdaFirma(matchId, jugadorId, asiste);
+  if (!susp || !susp.liberacion || !puedeLiberarSuspension()) return td;
+  return td.replace(/<\/td>$/, '<br><button class="btn btn-ghost btn-xs revertir-lib" data-jugador="' + jugadorId +
+    '" style="margin-top:5px;font-size:10.5px;" title="Volver a dejarlo suspendido para este partido">↩️ Revertir</button></td>');
+}
+
 function celdaFirma(matchId, jugadorId, asiste){
   return '<td class="celda-firma" data-match="' + matchId + '" data-jugador="' + jugadorId + '">' +
     contenidoCeldaFirma(matchId, jugadorId, asiste) + '</td>';
@@ -8293,7 +8419,7 @@ function imprimirAcreditacion(matchId){
       return planilla[lado][jid].asiste && j && j.teamId === teamId;
     }).map(function(jid){
       return { jid: jid, j: getJugador(STATE, jid), dorsal: planilla[lado][jid].dorsal || '',
-               susp: !!suspensionEnPartido(getJugador(STATE, jid), matchId) };
+               susp: bloqueaPartido(suspensionEnPartido(getJugador(STATE, jid), matchId)) };
     });
 
     var jugadores = presentes.filter(function(x){ return !x.j.cargo || x.j.cargo === 'Jugador'; })
