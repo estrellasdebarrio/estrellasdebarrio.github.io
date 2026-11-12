@@ -1052,7 +1052,7 @@ var CAUSALES_VERSION = 'ifab-2026-27';
 
 /* Versión del archivo. Sirve para confirmar, mirando el pie del menú, si el
    navegador está mostrando la versión publicada o una copia guardada en caché. */
-var APP_VERSION = 'v2026.11.02-1';
+var APP_VERSION = 'v2026.11.11-1';
 
 var CAUSALES = [
   { causal: 'Amonestación — tarjeta amarilla (Regla 12)', tarjeta: 'amarilla', detalles: [
@@ -4382,6 +4382,7 @@ function renderGoleadores(){
       (esAdmin() ? '<button class="btn btn-ghost btn-xs" id="btnLimpiarStats">🧹 Limpiar datos</button>' : '') +
       '</div>' +
     '</div>' +
+    avisoAccionesSinJugador() +
     '<div class="grid-3">' +
       renderRankingCard('Goleadores', '⚽', 'goles') +
       renderRankingCard('Tarjetas Amarillas', '🟨', 'amarillas') +
@@ -4398,6 +4399,21 @@ function renderGoleadores(){
   });
 }
 RENDERERS.goleadores = renderGoleadores;
+
+/* Aviso para quien administra: acciones de actas sin jugador no suman en los
+   rankings. Se corrige importando el acta del partido desde su archivo. */
+function avisoAccionesSinJugador(){
+  if (!puedeEditarAlgo()) return '';
+  var lista = accionesSinJugador();
+  if (!lista.length) return '';
+  var goles = lista.reduce(function(n, x){ return n + x.goles; }, 0);
+  return '<div class="card" style="border:1px solid var(--gold);background:var(--gold-soft);">' +
+    '<p style="margin:0;font-size:13px;"><b>⚠️ Hay acciones de actas sin jugador asociado' +
+    (goles ? ' (' + goles + ' gol' + (goles === 1 ? '' : 'es') + ')' : '') + '</b>, que no suman en estos rankings: ' +
+    lista.map(function(x){ return 'partido N°' + x.numero + ' (' + x.total + ')'; }).join(', ') + '.</p>' +
+    '<p class="desc" style="margin:6px 0 0;">Para corregirlas, importe el acta de esos partidos desde su archivo de ' +
+    'datos (.json) en Planilla de Juego.</p></div>';
+}
 
 
 /* ---- ui_acta.js ---- */
@@ -7420,6 +7436,199 @@ function descargarExcel(){
 }
 
 
+/* ---- ui_reparar_actas.js ---- */
+/* ============================================================================
+   REPARACIÓN DE ACTAS (noviembre 2026)
+
+   Al volver a cargar las nóminas, los jugadores quedaron con identificadores
+   nuevos y varias acciones de las actas (goles, tarjetas, cambios) perdieron
+   el vínculo con su jugador: seguían en el acta, pero no sumaban en la Tabla
+   de Goleadores ni en las estadísticas.
+
+   Con las actas guardadas como archivo de datos (que identifican a cada
+   persona por nombre, dorsal y RUT), se vuelve a amarrar cada acción a su
+   jugador. No se borra nada de lo registrado después en la plataforma:
+     1. Las acciones que ya tienen jugador se respetan tal cual.
+     2. Las acciones sin jugador se amarran a la acción equivalente del
+        archivo (mismo tipo, mismo club y, si se puede, mismo minuto).
+     3. Lo que esté en el archivo y falte en la plataforma se agrega.
+   No se crean personas nuevas: si alguien del archivo ya no figura en la
+   nómina de su club, esa acción queda como estaba y se informa.
+   El marcador y las sanciones no se tocan. Se aplica una sola vez y queda
+   anotado en el Historial de Actividad.
+   ========================================================================== */
+
+var REPARACION_ACTAS_ID = 'actas-2026-11-11';
+var REPARACION_ACTAS_DATOS = {"1":{"local":"VILLA LETELIER","visita":"JUVENTUD CATÓLICO","gl":5,"gv":1,"acciones":[{"lado":"local","tipo":"gol","minuto":6,"nombre":"DIEGO ALONSO PALOMINOS CONTRERAS","dorsal":11,"rut":""},{"lado":"local","tipo":"gol","minuto":15,"nombre":"AXL NICOLÁS SILVA CARDENAS","dorsal":7,"rut":""},{"lado":"visita","tipo":"sustitucion","minuto":16,"nombre":"Nelson Daza Sanchez","dorsal":4,"rut":"","entra":{"nombre":"Cristobal Ormeño Miranda","dorsal":16,"rut":""},"entretiempo":true},{"lado":"visita","tipo":"gol","minuto":20,"nombre":"Sebastian Villacura Martinez","dorsal":14,"rut":""},{"lado":"local","tipo":"gol","minuto":21,"nombre":"AXL NICOLÁS SILVA CARDENAS","dorsal":7,"rut":""},{"lado":"visita","tipo":"amarilla","minuto":25,"nombre":"Nelson Daza Sanchez","dorsal":4,"rut":""},{"lado":"local","tipo":"gol","minuto":30,"nombre":"AXL NICOLÁS SILVA CARDENAS","dorsal":7,"rut":""},{"lado":"local","tipo":"sustitucion","minuto":31,"nombre":"JOSÉ MIGUEL CANTILLANA SERRA","dorsal":2,"rut":"","entra":{"nombre":"VICENTE ALEJANDRO TORO AIYELEF","dorsal":13,"rut":""},"entretiempo":true},{"lado":"local","tipo":"sustitucion","minuto":31,"nombre":"DIEGO ALONSO PALOMINOS CONTRERAS","dorsal":11,"rut":"","entra":{"nombre":"CRISTOPHER ANDRES GIUSEPPE MORA NARVÁEZ","dorsal":5,"rut":""},"entretiempo":true},{"lado":"local","tipo":"sustitucion","minuto":33,"nombre":"JOSÉ MIGUEL CANTILLANA SERRA","dorsal":2,"rut":"","entra":{"nombre":"VICENTE ALEJANDRO TORO AIYELEF","dorsal":13,"rut":""},"entretiempo":false},{"lado":"local","tipo":"sustitucion","minuto":33,"nombre":"JORGE ABRAHAM ALISTE VELIZ","dorsal":17,"rut":"","entra":{"nombre":"DAMIAN ORLANDO CASTILLO FUENTES","dorsal":9,"rut":""},"entretiempo":false},{"lado":"local","tipo":"sustitucion","minuto":34,"nombre":"AXL NICOLÁS SILVA CARDENAS","dorsal":7,"rut":"","entra":{"nombre":"BASTIAN MORALES SILVA","dorsal":21,"rut":""},"entretiempo":true},{"lado":"visita","tipo":"sustitucion","minuto":35,"nombre":"Eduardo Soto Diaz","dorsal":6,"rut":"","entra":{"nombre":"Cristobal Ormeño Miranda","dorsal":16,"rut":""},"entretiempo":true},{"lado":"local","tipo":"amarilla","minuto":42,"nombre":"ALEX DEJAN MATAMALA BARRIENTOS","dorsal":3,"rut":"","detalle":"Conducta antideportiva"},{"lado":"local","tipo":"amarilla","minuto":43,"nombre":"BENJAMIN JESÚS REYES ROYAS","dorsal":1,"rut":"","detalle":"Conducta antideportiva"},{"lado":"local","tipo":"gol","minuto":50,"nombre":"DAMIAN ORLANDO CASTILLO FUENTES","dorsal":9,"rut":""},{"lado":"visita","tipo":"roja","minuto":51,"nombre":"Selem Lojda Dequinpe","dorsal":7,"rut":"","detalle":"Recibir una segunda amonestación en el mismo partido (doble amarilla)","partidos":1},{"lado":"local","tipo":"amarilla","minuto":52,"nombre":"LEONARDO JAVIER HIDALGO SEPÚLVEDA","dorsal":8,"rut":"","detalle":"Conducta antideportiva"}]},"4":{"local":"LA FRONTERA","visita":"INTER DE QUILIN","gl":3,"gv":0,"acciones":[{"lado":"local","tipo":"gol","minuto":null,"nombre":"José Mateo Cabrera Martinez","dorsal":4,"rut":"21.685.910-3"},{"lado":"local","tipo":"gol","minuto":null,"nombre":"Vicente Eloy González Bernal","dorsal":11,"rut":"21.801.331-7"},{"lado":"local","tipo":"gol","minuto":null,"nombre":"Gabriel Andrés Pineda Fuentes","dorsal":9,"rut":"19.753.325-0"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Jesús Manuel Zurita Oliva","dorsal":13,"rut":"19.574.016-k","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Gary Antonio Navarrete Saldivia","dorsal":16,"rut":"18.607.749-0","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Leonardo Javier Moisés González Riquelme","dorsal":10,"rut":"19.054.250-5","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Juan Eduardo Pichinao Rodríguez","dorsal":7,"rut":"17.484.585-9","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Ignacio Alejandro Romeo Fuentes Toledo","dorsal":18,"rut":"22.028.497-2","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"José Mateo Cabrera Martinez","dorsal":4,"rut":"21.685.910-3","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Marcelo Andrés Jelvez Rogel","dorsal":1,"rut":"20.647.911-6","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"visita","tipo":"amarilla","minuto":null,"nombre":"Juan Carlos Araya Diaz","dorsal":5,"rut":"18.922.378 - 1","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"visita","tipo":"amarilla","minuto":null,"nombre":"Cristobal Fernando Galvez Diaz","dorsal":38,"rut":"19.310.610 - 2","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"visita","tipo":"amarilla","minuto":null,"nombre":"Felipe Alejandro Gonzalez Flores","dorsal":30,"rut":"18.730.781 - 3","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"visita","tipo":"amarilla","minuto":null,"nombre":"Franco Ignacio Otremari Zamur","dorsal":0,"rut":"","causal":"Amonestación — tarjeta amarilla (Regla 12)"}]},"3":{"local":"LOS CEREZOS","visita":"UNIÓN MAY","gl":2,"gv":1,"acciones":[{"lado":"local","tipo":"gol","minuto":null,"nombre":"Alexander Fabian Orellana Souza","dorsal":10,"rut":"20.835.030-7"},{"lado":"local","tipo":"gol","minuto":null,"nombre":"Benjamin Ignacio Cayupi Vergara","dorsal":17,"rut":"21.942.704-2"},{"lado":"visita","tipo":"gol","minuto":null,"nombre":"Martin Alejandro Fuenzalida Iturra","dorsal":10,"rut":"21860923-6"},{"lado":"visita","tipo":"amarilla","minuto":null,"nombre":"Maximiliano Antonio Marin","dorsal":11,"rut":"22757112-8","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"visita","tipo":"amarilla","minuto":null,"nombre":"Renato Agustin Espinoza Espinoza","dorsal":4,"rut":"22905965-3","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"visita","tipo":"amarilla","minuto":null,"nombre":"Braulio Ignacio Fuentes Cartagena","dorsal":19,"rut":"16645504-9","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"visita","tipo":"amarilla","minuto":null,"nombre":"Carlos Alberto Rubio Escobar","dorsal":16,"rut":"15621654-0","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Fabian Antonio Orellana Garay","dorsal":3,"rut":"15.479.295-3","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Marcos Aurelio San Martín Medina","dorsal":5,"rut":"20.395.770-k","causal":"Amonestación — tarjeta amarilla (Regla 12)"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Luis Alberto Cortez Villalon","dorsal":20,"rut":"15.432.962-5","causal":"Amonestación — tarjeta amarilla (Regla 12)"}]},"6":{"local":"COSANFI","visita":"CHILESPORTING","gl":0,"gv":1,"acciones":[{"lado":"visita","tipo":"sustitucion","minuto":null,"nombre":"Ignacio Jesus Villagra Silva","dorsal":7,"rut":"21.073.279-9","entra":{"nombre":"Luciano Enrique Rojas Luengo","dorsal":4,"rut":"21,067.583-3"},"entretiempo":false},{"lado":"visita","tipo":"sustitucion","minuto":null,"nombre":"Camilo Ignacio Huenchuleo Diaz","dorsal":5,"rut":"19.847.116-K","entra":{"nombre":"Bastian Andres Pastene Altamirano","dorsal":11,"rut":"18.993.732-6"},"entretiempo":false},{"lado":"local","tipo":"sustitucion","minuto":9,"nombre":"Fabian Cornejo Peredo","dorsal":90,"rut":"17.413.273-9","entra":{"nombre":"Gianfranco Barraza Benavides","dorsal":10,"rut":"19.171.472-5"},"entretiempo":false},{"lado":"visita","tipo":"gol","minuto":9,"nombre":"Sebastian Ignacio Cancino Rios","dorsal":8,"rut":"19.321.464-9"},{"lado":"local","tipo":"sustitucion","minuto":24,"nombre":"Matias Flores Ceverino","dorsal":15,"rut":"20.465.563-4","entra":{"nombre":"Yean Liempi Figueroa","dorsal":25,"rut":"23.114.082-4"},"entretiempo":false},{"lado":"local","tipo":"amarilla","minuto":35,"nombre":"Isaias Arias Rios","dorsal":70,"rut":"21.117.500-1"},{"lado":"local","tipo":"amarilla","minuto":35,"nombre":"Niger Lopez Mena","dorsal":17,"rut":"22.771.969-9"},{"lado":"visita","tipo":"amarilla","minuto":35,"nombre":"Camilo Ignacio Huenchuleo Diaz","dorsal":5,"rut":"19.847.116-K"},{"lado":"visita","tipo":"amarilla","minuto":36,"nombre":"Luciano Enrique Rojas Luengo","dorsal":4,"rut":"21,067.583-3"},{"lado":"visita","tipo":"amarilla","minuto":36,"nombre":"Bastian Andres Pastene Altamirano","dorsal":11,"rut":"18.993.732-6"},{"lado":"visita","tipo":"amarilla","minuto":36,"nombre":"Deny Alexander Catalan Espinoza","dorsal":10,"rut":"22.905.030-3"}]},"2":{"local":"VILLA ROMAN","visita":"MANCHESTER","gl":0,"gv":6,"acciones":[{"lado":"visita","tipo":"gol","minuto":14,"nombre":"CLAUDIO ANDRES LLANCAVIL ORTIZ","dorsal":11,"rut":""},{"lado":"local","tipo":"amarilla","minuto":17,"nombre":"Felipe Ignacio Vicencio Tejo","dorsal":70,"rut":"","detalle":"Conducta antideportiva"},{"lado":"visita","tipo":"gol","minuto":26,"nombre":"FRANCISCO JAVIER CASTILLO RIFFO","dorsal":12,"rut":""},{"lado":"local","tipo":"amarilla","minuto":27,"nombre":"Vicente Tomas Cabrera Sesnich","dorsal":4,"rut":"","detalle":"Conducta antideportiva"},{"lado":"visita","tipo":"sustitucion","minuto":33,"nombre":"AXEL CAMILO SILVA VARAS","dorsal":5,"rut":"","entra":{"nombre":"FELIPE ANDRES VILLALOBOS ASENJO","dorsal":15,"rut":""},"entretiempo":true},{"lado":"visita","tipo":"gol","minuto":33,"nombre":"CLAUDIO ANDRES LLANCAVIL ORTIZ","dorsal":11,"rut":""},{"lado":"visita","tipo":"gol","minuto":39,"nombre":"SERGIO RUPAILLAN RODRIGUEZ","dorsal":10,"rut":""},{"lado":"visita","tipo":"gol","minuto":48,"nombre":"FRANCO ESTEBAN VALENZUELA PARRA","dorsal":18,"rut":""},{"lado":"visita","tipo":"gol","minuto":51,"nombre":"JORDAN ANTONIO MARCONI VERDUGO","dorsal":14,"rut":""}]},"13":{"local":"LOS CEREZOS","visita":"JUVENTUD CATÓLICO","gl":3,"gv":1,"acciones":[{"lado":"local","tipo":"gol","minuto":8,"nombre":"Benjamin Ignacio Cayupi Vergara","dorsal":8,"rut":"21.942.704-2"},{"lado":"visita","tipo":"gol","minuto":22,"nombre":"Bastian Osses Lombardi","dorsal":20,"rut":"21.222.952-0"},{"lado":"local","tipo":"gol","minuto":44,"nombre":"Jhonatan Alejandro Clavero Fernandez","dorsal":12,"rut":"20.885.556-5"},{"lado":"visita","tipo":"amarilla","minuto":64,"nombre":"Tomas Silva Gajardo","dorsal":3,"rut":"18.642.352-6"},{"lado":"visita","tipo":"amarilla","minuto":65,"nombre":"Victor Manuel Abarca Reyes","dorsal":16,"rut":"17.764.271-1"},{"lado":"visita","tipo":"amarilla","minuto":65,"nombre":"Tomas Lopez Muñoz","dorsal":8,"rut":"21.212.196-7"},{"lado":"local","tipo":"amarilla","minuto":65,"nombre":"Jhonatan Alejandro Clavero Fernandez","dorsal":12,"rut":"20.885.556-5"},{"lado":"local","tipo":"amarilla","minuto":65,"nombre":"Matias Camilo Veliz Tapia","dorsal":16,"rut":"17.702.209-3"},{"lado":"local","tipo":"amarilla","minuto":65,"nombre":"Alexander Fabian Orellana Souza","dorsal":10,"rut":"20.835.030-7"},{"lado":"local","tipo":"amarilla","minuto":65,"nombre":"Marcos Aurelio San Martín Medina","dorsal":5,"rut":"20.395.770-k"},{"lado":"local","tipo":"amarilla","minuto":66,"nombre":"José Luis Villalobos Saez","dorsal":11,"rut":"22.081.708-3"},{"lado":"local","tipo":"amarilla","minuto":66,"nombre":"José Luis Villalobos Saez","dorsal":11,"rut":"22.081.708-3"},{"lado":"local","tipo":"roja","minuto":66,"nombre":"José Luis Villalobos Saez","dorsal":11,"rut":"22.081.708-3","enviadaSanciones":true},{"lado":"local","tipo":"gol","minuto":60,"nombre":"Matias Camilo Veliz Tapia","dorsal":16,"rut":"17.702.209-3"},{"lado":"visita","tipo":"roja","minuto":null,"nombre":"Jacob Diaz Valdivia","dorsal":0,"rut":"18.314.800-1","causal":"Cuerpo técnico y banca (Regla 12)","detalle":"Expulsión: integrante del cuerpo técnico expulsado de la banca","partidos":3,"multa":20000,"enviadaSanciones":true}]},"10":{"local":"COSANFI","visita":"MANCHESTER","gl":3,"gv":4,"acciones":[{"lado":"visita","tipo":"gol","minuto":1,"nombre":"Claudio Andres Llancavil Ortiz","dorsal":11,"rut":"19.002.534-9"},{"lado":"visita","tipo":"gol","minuto":1,"nombre":"Claudio Andres Llancavil Ortiz","dorsal":11,"rut":"19.002.534-9"},{"lado":"local","tipo":"gol","minuto":1,"nombre":"Fabian Martinez Muñoz","dorsal":25,"rut":"19.855.964-4"},{"lado":"local","tipo":"amarilla","minuto":1,"nombre":"Alan Rojas Osses","dorsal":85,"rut":"20.983.191-0"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Matias Flores Ceverino","dorsal":90,"rut":"20.465.563-4"},{"lado":"visita","tipo":"amarilla","minuto":32,"nombre":"Claudio Andres Llancavil Ortiz","dorsal":11,"rut":"19.002.534-9"},{"lado":"local","tipo":"gol","minuto":36,"nombre":"Bastian Morales Ramirez","dorsal":22,"rut":"22.325.750-K"},{"lado":"visita","tipo":"amarilla","minuto":37,"nombre":"Giordano Alexander Lara Sepulveda","dorsal":19,"rut":"20.573.804-5"},{"lado":"local","tipo":"amarilla","minuto":52,"nombre":"Jhogans Rojas Urra","dorsal":17,"rut":"22.445.190-3"},{"lado":"local","tipo":"gol","minuto":56,"nombre":"Matias Cortez Fugueroa","dorsal":99,"rut":"22.476.420-0"},{"lado":"visita","tipo":"gol","minuto":58,"nombre":"Diego Edgardo Oyarzun Fuentes","dorsal":6,"rut":"20.186.645-6"},{"lado":"local","tipo":"roja","minuto":60,"nombre":"Alan Rojas Osses","dorsal":85,"rut":"20.983.191-0","causal":"Expulsión — tarjeta roja (Regla 12)","detalle":"Emplear lenguaje o actuar de modo ofensivo, insultante o humillante","partidos":2,"multa":20000,"enviadaSanciones":true},{"lado":"local","tipo":"roja","minuto":30,"nombre":"Alvaro Molina Sanhueza","dorsal":21,"rut":"21.141.955-5","causal":"Expulsión — tarjeta roja (Regla 12)","detalle":"Conducta violenta","partidos":2,"multa":25000,"enviadaSanciones":true},{"lado":"visita","tipo":"gol","minuto":66,"nombre":"Jordan Antonio Marconi Verdugo","dorsal":14,"rut":"18.246.235-7"}]},"9":{"local":"LOS CEREZOS","visita":"INTER DE MILÁN","gl":0,"gv":3,"acciones":[{"lado":"local","tipo":"amarilla","minuto":18,"nombre":"Jhonatan Alejandro Clavero Fernandez","dorsal":3,"rut":"20.885.556-5"},{"lado":"visita","tipo":"gol","minuto":18,"nombre":"Manuel Aaron Fuenzalida Valenzuela","dorsal":64,"rut":"19.883.303-7"},{"lado":"local","tipo":"sustitucion","minuto":32,"nombre":"Jhonatan Alejandro Clavero Fernandez","dorsal":3,"rut":"20.885.556-5","entra":{"nombre":"Matias Camilo Veliz Tapia","dorsal":17,"rut":"17.702.209-3"},"entretiempo":false},{"lado":"visita","tipo":"gol","minuto":38,"nombre":"Geison Morales Herrera","dorsal":10,"rut":"21.120.146-0"},{"lado":"visita","tipo":"gol","minuto":48,"nombre":"Rodrigo Aguilera Rivero","dorsal":16,"rut":"20.574.383-9"},{"lado":"visita","tipo":"amarilla","minuto":61,"nombre":"Matias Antonio Salgado Jara","dorsal":2,"rut":"21.127.649-5"},{"lado":"visita","tipo":"amarilla","minuto":63,"nombre":"Rodrigo Aguilera Rivero","dorsal":16,"rut":"20.574.383-9"}]},"5":{"local":"UNIÓN LAS TORRES","visita":"INTER DE MILÁN","gl":1,"gv":1,"acciones":[{"lado":"visita","tipo":"gol","minuto":8,"nombre":"Andres Marcelo Rodriguez Toro","dorsal":9,"rut":"20.537.348-9"},{"lado":"local","tipo":"gol","minuto":31,"nombre":"Claudio Nicolas Henriquez Huenuqueo","dorsal":14,"rut":"20.228.135-4"},{"lado":"local","tipo":"sustitucion","minuto":null,"nombre":"Juan Herrera Gonzalez","dorsal":19,"rut":"17.780.386-3","entra":{"nombre":"Leonardo Cerda Bravo","dorsal":10,"rut":"20.237.311-9"},"entretiempo":false},{"lado":"local","tipo":"sustitucion","minuto":null,"nombre":"Sebastian Alexis Morales Osorios","dorsal":13,"rut":"22.342.450-3","entra":{"nombre":"Benjamin Esteban Arce Reyes","dorsal":20,"rut":"20.753.113-8"},"entretiempo":true},{"lado":"visita","tipo":"amarilla","minuto":null,"nombre":"Simon Troncoso Galvez","dorsal":20,"rut":"21.838.804-3"},{"lado":"visita","tipo":"sustitucion","minuto":null,"nombre":"Geison Morales Herrera","dorsal":10,"rut":"21.120.146-0","entra":{"nombre":"Deiby Jordano Vivanco Duran","dorsal":7,"rut":"21.274.359-3"},"entretiempo":false},{"lado":"visita","tipo":"sustitucion","minuto":null,"nombre":"Felipe Ignacio Ñuñez Oyarzun","dorsal":14,"rut":"20.831.862-4","entra":{"nombre":"Luciano Alejandro Lopez Burgos","dorsal":2,"rut":"20.909.718-4"},"entretiempo":true},{"lado":"visita","tipo":"sustitucion","minuto":null,"nombre":"Ricardo Ruben Guerrero Castillo","dorsal":11,"rut":"20.731.425-0","entra":{"nombre":"Elias Cerda Quezada","dorsal":15,"rut":"21.054.889-0"},"entretiempo":true},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Nicolas Antonio Muñoz Lillo","dorsal":5,"rut":"21.241.340-2"},{"lado":"visita","tipo":"amarilla","minuto":null,"nombre":"Carlos Mercado Quiñonez","dorsal":6,"rut":"24.095.662-4"}]},"11":{"local":"UNIÓN LAS TORRES","visita":"VILLA LETELIER","gl":1,"gv":2,"acciones":[{"lado":"visita","tipo":"gol","minuto":16,"nombre":"Jorge Abraham Aliste Veliz","dorsal":9,"rut":"20.997.146-1"},{"lado":"visita","tipo":"amarilla","minuto":20,"nombre":"Bastian Ignacio Aguilera Ruminó","dorsal":20,"rut":"21.286.310-6"},{"lado":"visita","tipo":"roja","minuto":25,"nombre":"Bastian Ignacio Aguilera Ruminó","dorsal":20,"rut":"21.286.310-6","enviadaSanciones":true},{"lado":"local","tipo":"gol","minuto":27,"nombre":"Francisco Andres Ortiz Crisostomo","dorsal":99,"rut":"17.421.139-6"},{"lado":"visita","tipo":"gol","minuto":31,"nombre":"Damian Orlando Castillo Fuentes","dorsal":18,"rut":"19.995.681-7"},{"lado":"local","tipo":"amarilla","minuto":null,"nombre":"Diego Yerko Albornoz Diaz","dorsal":8,"rut":"18.832.289-1"}]}};
+
+function rutNorm(r){ return String(r || '').toLowerCase().replace(/[^0-9k]/g, ''); }
+
+/* Busca a la persona en su club sin crearla: RUT, nombre exacto y, por último,
+   nombre parecido (todas las palabras de uno contenidas en el otro). */
+function buscarPersonaClub(teamId, f){
+  if (!f || !f.nombre) return null;
+  var delClub = STATE.jugadores.filter(function(j){ return j.teamId === teamId; });
+  var rut = rutNorm(f.rut);
+  if (rut.length >= 7){
+    var r = delClub.filter(function(j){ return rutNorm(j.rut) === rut; });
+    if (r.length === 1) return r[0];
+  }
+  var nom = normTexto(f.nombre);
+  var ex = delClub.filter(function(j){ return normTexto(j.nombre) === nom; });
+  if (ex.length) return ex[0];
+  var pal = nom.split(' ').filter(function(w){ return w.length > 1; });
+  if (pal.length < 2) return null;
+  var parecidos = delClub.filter(function(j){
+    var pj = normTexto(j.nombre).split(' ');
+    var contenidoA = pal.every(function(w){ return pj.indexOf(w) !== -1; });
+    var contenidoB = pj.length >= 2 && pj.every(function(w){ return pal.indexOf(w) !== -1; });
+    return contenidoA || contenidoB;
+  });
+  return parecidos.length === 1 ? parecidos[0] : null;
+}
+
+function repararActasDesdeArchivos(datos){
+  var resumen = { partidos: 0, amarradas: 0, agregadas: 0, sinResolver: 0, noEncontradas: [], detalle: [] };
+  Object.keys(datos).forEach(function(num){
+    var d = datos[num];
+    var p = STATE.partidos.filter(function(x){ return String(x.numero) === String(num); })[0];
+    if (!p) return;
+    var t = matchRowTeams(p);
+    if (!t.localId || !t.visitaId) return;
+    function teamDe(lado){ return lado === 'visita' ? t.visitaId : t.localId; }
+
+    var cacheJ = {};
+    function persona(lado, f, crear){
+      if (!f || !f.nombre) return null;
+      var k = lado + '|' + normTexto(f.nombre) + '|' + rutNorm(f.rut);
+      if (cacheJ[k]) return cacheJ[k];
+      var j = buscarPersonaClub(teamDe(lado), f);
+      if (j) cacheJ[k] = j;
+      else if (crear && resumen.noEncontradas.indexOf(f.nombre) === -1) resumen.noEncontradas.push(f.nombre);
+      return j;
+    }
+
+    /* Solo se reparan actas que ya existen en la plataforma; un partido sin
+       acta se carga con la importación normal desde Planilla de Juego. */
+    var actaExistente = (STATE.actas || {})[p.id];
+    if (!actaExistente || !(actaExistente.acciones || []).length) return;
+    var acta = actaExistente;
+    var planilla = ensurePlanilla(p.id);
+    var archivo = d.acciones.map(function(a){ return { a: a, usada: false }; });
+    var vinculadas = acta.acciones.filter(function(a){ return !!getJugador(STATE, a.playerId); });
+    var huerfanas = acta.acciones.filter(function(a){ return !getJugador(STATE, a.playerId); });
+    var reclamadas = [];
+
+    /* 1. Acciones con jugador: consumen su par exacto del archivo. */
+    vinculadas.forEach(function(a){
+      var par = archivo.filter(function(x){
+        if (x.usada || x.a.tipo !== a.tipo || x.a.lado !== a.lado) return false;
+        var j = persona(x.a.lado, x.a, false);
+        return j && j.id === a.playerId;
+      })[0];
+      if (par){ par.usada = true; reclamadas.push(a); }
+    });
+
+    function anotarPlanilla(lado, j, dorsal){
+      if (!planilla[lado]) planilla[lado] = {};
+      if (!planilla[lado][j.id]) planilla[lado][j.id] = { asiste: true, dorsal: dorsal || j.dorsal || 0 };
+    }
+    function minutoDe(v){ return (v === null || v === undefined || v === '') ? null : Number(v); }
+
+    /* 2. Acciones sin jugador: se amarran a su equivalente del archivo. */
+    var amarradas = 0;
+    huerfanas.forEach(function(a){
+      var libres = archivo.filter(function(x){ return !x.usada && x.a.tipo === a.tipo && x.a.lado === a.lado; });
+      var par = libres.filter(function(x){ return minutoDe(x.a.minuto) === minutoDe(a.minuto); })[0] || libres[0];
+      if (!par){ resumen.sinResolver++; return; }
+      var j = persona(par.a.lado, par.a, true);
+      if (!j){ resumen.sinResolver++; return; }
+      if (a.tipo === 'sustitucion'){
+        var je = persona(par.a.lado, par.a.entra, true);
+        if (!je){ resumen.sinResolver++; return; }
+        a.playerEntra = je.id;
+        anotarPlanilla(a.lado, je, par.a.entra.dorsal);
+      }
+      par.usada = true;
+      a.playerId = j.id;
+      if (a.minuto === null || a.minuto === undefined) a.minuto = minutoDe(par.a.minuto);
+      anotarPlanilla(a.lado, j, par.a.dorsal);
+      amarradas++;
+    });
+
+    /* 3. Lo que sobra del archivo: si en la plataforma hay una acción del
+       mismo tipo y club que no tuvo par (fue corregida después), se respeta;
+       si no, la acción falta y se agrega. */
+    var agregadas = 0;
+    archivo.filter(function(x){ return !x.usada; }).forEach(function(x){
+      var editada = vinculadas.filter(function(a){
+        return reclamadas.indexOf(a) === -1 && a.tipo === x.a.tipo && a.lado === x.a.lado;
+      })[0];
+      if (editada){ reclamadas.push(editada); x.usada = true; return; }
+      var j = persona(x.a.lado, x.a, false);
+      if (!j) return;   /* ya contada como acción sin amarrar, o no estaba en la plataforma */
+      var nueva = {
+        id: uid('a'), lado: x.a.lado, playerId: j.id, tipo: x.a.tipo, minuto: minutoDe(x.a.minuto),
+        causal: x.a.causal || '', detalle: x.a.detalle || '',
+        partidos: Number(x.a.partidos) || 0, multa: Number(x.a.multa) || 0,
+        enviadaSanciones: !!x.a.enviadaSanciones
+      };
+      if (x.a.tipo === 'sustitucion'){
+        var je = persona(x.a.lado, x.a.entra, false);
+        if (!je) return;
+        nueva.playerEntra = je.id;
+        nueva.entretiempo = !!x.a.entretiempo;
+        anotarPlanilla(x.a.lado, je, x.a.entra.dorsal);
+      }
+      anotarPlanilla(x.a.lado, j, x.a.dorsal);
+      acta.acciones.push(nueva);
+      x.usada = true;
+      agregadas++;
+    });
+
+    if (amarradas || agregadas){
+      resumen.partidos++;
+      resumen.detalle.push('N°' + p.numero + ': ' + amarradas + ' amarrada(s)' + (agregadas ? ', ' + agregadas + ' agregada(s)' : ''));
+    }
+    resumen.amarradas += amarradas;
+    resumen.agregadas += agregadas;
+  });
+  return resumen;
+}
+
+/* Se ejecuta una sola vez sobre el estado compartido, al arrancar. */
+function migrarReparacionActas(){
+  STATE.reparaciones = STATE.reparaciones || {};
+  if (STATE.reparaciones[REPARACION_ACTAS_ID]) return false;
+  if (!(STATE.jugadores || []).length) return false;   /* estado vacío: nada que reparar todavía */
+  var r = repararActasDesdeArchivos(REPARACION_ACTAS_DATOS);
+  STATE.reparaciones[REPARACION_ACTAS_ID] = {
+    ts: new Date().toISOString(), amarradas: r.amarradas, agregadas: r.agregadas,
+    sinResolver: r.sinResolver, noEncontradas: r.noEncontradas
+  };
+  logActivity('Actas reparadas desde archivos',
+    r.amarradas + ' acción(es) vueltas a amarrar a su jugador y ' + r.agregadas + ' agregada(s) en ' +
+    r.partidos + ' partido(s)' + (r.detalle.length ? ' (' + r.detalle.join('; ') + ')' : '') +
+    (r.sinResolver ? '. Quedan ' + r.sinResolver + ' acción(es) sin amarrar' +
+      (r.noEncontradas.length ? ' (no figuran en la nómina: ' + r.noEncontradas.join(', ') + ')' : '') : ''));
+  if (STATE.historial && STATE.historial[0]) STATE.historial[0].autor = 'Sistema (reparación de actas)';
+  return true;
+}
+
+/* Acciones de actas que no tienen jugador asociado, por partido. Sirve para
+   avisar en la Tabla de Goleadores qué actas conviene volver a importar. */
+function accionesSinJugador(){
+  var out = [];
+  STATE.partidos.slice().sort(function(a, b){ return a.numero - b.numero; }).forEach(function(p){
+    var acc = ((STATE.actas || {})[p.id] || {}).acciones || [];
+    var n = acc.filter(function(a){ return !getJugador(STATE, a.playerId); });
+    if (n.length) out.push({ numero: p.numero, total: n.length,
+      goles: n.filter(function(a){ return a.tipo === 'gol'; }).length });
+  });
+  return out;
+}
+
+
 /* ---- main_firebase.js ---- */
 /* ---- ui_nomina.js ---- */
 /* ============================================================================
@@ -9993,6 +10202,8 @@ document.addEventListener('DOMContentLoaded', async function(){
   var nombresCorregidos = migrarNombresJugadores();
   if (nombresCorregidos) guardarTrasMigrar = true;
   if (migrarAbreviaturas()) guardarTrasMigrar = true;
+  /* Actas: vuelve a amarrar acciones que perdieron su jugador (una sola vez). */
+  if (!FALLO_CARGA && migrarReparacionActas()) guardarTrasMigrar = true;
 
   renderAll();
   switchTab('equipos');
